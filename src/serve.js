@@ -38,6 +38,9 @@ const server = createServer(async (req, res) => {
     // 移除查询参数
     filePath = filePath.split('?')[0]
     
+    // URL 解码（支持中文路径）
+    filePath = decodeURIComponent(filePath)
+    
     // 安全检查：防止路径遍历攻击
     if (filePath.includes('..')) {
       res.writeHead(403, { 'Content-Type': 'text/plain' })
