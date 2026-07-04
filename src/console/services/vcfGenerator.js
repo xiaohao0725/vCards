@@ -50,6 +50,8 @@ export function generateVcfFromContact(contact) {
     vCard.url = contact.url
   }
 
+  vCard.uid = contact.id ? `vcards-cn-${contact.id}` : `vcards-cn-${Date.now()}`
+
   let formatted = vCard.getFormattedString()
 
   // 添加分类信息
