@@ -96,7 +96,7 @@ jobs:
           docker run -d --name vcards-radicale \
             --restart always \
             --network fbk-network \
-            -v vcards-data:/app/vcards/collection-root/cn \
+            -v vcards-data:/app/vcards/cn \
             -e TZ=${TZ} \
             vcards-radicale:latest
 
