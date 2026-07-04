@@ -139,4 +139,13 @@ export default async function contactsRoutes(fastify) {
     await prisma.contact.delete({ where: { id } })
     return { success: true }
   })
+
+  // 批量发布
+  fastify.post('/contacts/publish-all', async (request, reply) => {
+    const result = await prisma.contact.updateMany({
+      where: { status: 'draft' },
+      data: { status: 'published' }
+    })
+    return { published: result.count }
+  })
 }

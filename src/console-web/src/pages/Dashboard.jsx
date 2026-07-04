@@ -35,6 +35,20 @@ export default function Dashboard() {
     loadContacts()
   }, [loadContacts])
 
+  const handlePublishAll = async () => {
+    if (!window.confirm('确定将所有草稿标记为已发布？')) return
+    setPublishing(true)
+    try {
+      const result = await api.publishAll()
+      alert(`已发布 ${result.published} 个联系人`)
+      loadContacts()
+    } catch (err) {
+      alert(`失败: ${err.message}`)
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   const handlePublish = async () => {
     if (!window.confirm('确定要从已发布的联系人生成 VCF 文件吗？')) return
     setPublishing(true)
@@ -94,6 +108,9 @@ export default function Dashboard() {
           </select>
         </div>
         <div className="toolbar-right">
+          <button onClick={handlePublishAll} disabled={publishing} className="btn-primary" style={{ background: '#388e3c' }}>
+            {publishing ? '...' : '全部发布'}
+          </button>
           <button onClick={handlePublish} disabled={publishing} className="btn-primary">
             {publishing ? '生成中...' : '发布 VCF'}
           </button>

@@ -83,6 +83,9 @@ export const api = {
   publish: () =>
     request('/vcf/publish', { method: 'POST' }),
 
+  publishAll: () =>
+    request('/contacts/publish-all', { method: 'POST' }),
+
   uploadImage: (file) => {
     const formData = new FormData()
     formData.append('file', file)
