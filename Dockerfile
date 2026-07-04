@@ -12,20 +12,10 @@ RUN apk add --no-cache \
   && rm -rf /var/cache/apk/* \
   \
   && { \
-    echo '[root]'; \
+    echo '[allow-all]'; \
     echo 'user: .+'; \
-    echo 'collection:'; \
-    echo 'permissions: R'; \
-    echo; \
-    echo '[principal]'; \
-    echo 'user: .+'; \
-    echo 'collection: {user}'; \
-    echo 'permissions: R'; \
-    echo; \
-    echo '[collections]'; \
-    echo 'user: .+'; \
-    echo 'collection: {user}/[^/]+'; \
-    echo 'permissions: rR'; \
+    echo 'collection: .*'; \
+    echo 'permissions: rRwW'; \
   } > /etc/radicale/rights \
   \
   && { \
