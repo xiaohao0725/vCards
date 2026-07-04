@@ -37,11 +37,6 @@ RUN apk add --no-cache \
     echo 'file = /etc/radicale/rights'; \
   } > /etc/radicale/config
 
-COPY --from=builder /app/radicale/ios/ /app/vcards/collection-root/cn/
-COPY --from=builder /app/radicale/macos/ /app/vcards/collection-root/cnmacos/
-
-VOLUME /app/vcards/collection-root/cn
-
 EXPOSE 5232
 
 CMD ["radicale"]
