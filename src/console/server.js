@@ -22,16 +22,16 @@ async function buildServer() {
   await server.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } })
 
   const publicDir = path.resolve(__dirname, '../../public/console')
-  await server.register(staticFiles, { root: publicDir, prefix: '/' })
+  await server.register(staticFiles, { root: publicDir, prefix: '/console/' })
 
-  await server.register(authRoutes, { prefix: '/api/auth' })
-  await server.register(contactsRoutes, { prefix: '/api' })
-  await server.register(categoriesRoutes, { prefix: '/api' })
-  await server.register(vcfRoutes, { prefix: '/api' })
-  await server.register(uploadRoutes, { prefix: '/api' })
+  await server.register(authRoutes, { prefix: '/console/api/auth' })
+  await server.register(contactsRoutes, { prefix: '/console/api' })
+  await server.register(categoriesRoutes, { prefix: '/console/api' })
+  await server.register(vcfRoutes, { prefix: '/console/api' })
+  await server.register(uploadRoutes, { prefix: '/console/api' })
 
   server.setNotFoundHandler((request, reply) => {
-    if (request.url.startsWith('/api/')) {
+    if (request.url.startsWith('/console/api/')) {
       reply.code(404).send({ error: '接口不存在' })
     } else {
       reply.sendFile('index.html')

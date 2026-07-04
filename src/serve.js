@@ -38,6 +38,11 @@ const server = createServer(async (req, res) => {
     // 移除查询参数
     filePath = filePath.split('?')[0]
     
+    // 移除 /web/ 前缀（由 nginx 反向代理保留）
+    if (filePath.startsWith('/web/')) {
+      filePath = filePath.slice(4) || '/'
+    }
+    
     // URL 解码（支持中文路径）
     filePath = decodeURIComponent(filePath)
     
