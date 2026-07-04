@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename)
 const PORT = process.env.CONSOLE_PORT || 3001
 
 async function buildServer() {
-  const server = Fastify({ logger: true })
+  const server = Fastify({ logger: true, bodyLimit: 50 * 1024 * 1024 })
 
   await server.register(cors, { origin: true, credentials: true })
   await server.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } })
