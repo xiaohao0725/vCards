@@ -19,7 +19,7 @@ async function buildServer() {
   const server = Fastify({ logger: true })
 
   await server.register(cors, { origin: true, credentials: true })
-  await server.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } })
+  await server.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } })
 
   const publicDir = path.resolve(__dirname, '../../public/console')
   await server.register(staticFiles, { root: publicDir, prefix: '/console/' })
