@@ -25,10 +25,11 @@ export function generateVcfFromContact(contact) {
     contact.phones
       .filter(p => p.number)
       .forEach(p => {
+        const num = typeof p.number === 'object' ? String(p.number.number) : String(p.number)
         if (p.label) {
-          vCard.cellPhone.push({ number: p.number, label: p.label })
+          vCard.cellPhone.push({ number: num, label: p.label })
         } else {
-          vCard.cellPhone.push(p.number)
+          vCard.cellPhone.push(num)
         }
       })
   }
@@ -38,10 +39,11 @@ export function generateVcfFromContact(contact) {
     contact.emails
       .filter(e => e.email)
       .forEach(e => {
+        const addr = typeof e.email === 'object' ? String(e.email.email) : String(e.email)
         if (e.label) {
-          vCard.workEmail.push({ email: e.email, label: e.label })
+          vCard.workEmail.push({ email: addr, label: e.label })
         } else {
-          vCard.workEmail.push(e.email)
+          vCard.workEmail.push(addr)
         }
       })
   }
@@ -120,9 +122,11 @@ export function generateAllVcfFiles(contacts, silent = false) {
   }
 
   // 写入汇总文件
+  // 写入汇总文件（供下载用，放在 VCF_OUTPUT_DIR 父目录避免被 Radicale 解析）
+  const summaryDir = path.dirname(VCF_OUTPUT_DIR)
+  if (!fs.existsSync(summaryDir)) fs.mkdirSync(summaryDir, { recursive: true })
   if (allVcfLines.length > 0) {
-    const summaryPath = path.join(VCF_OUTPUT_DIR, '汇总.vcf')
-    fs.writeFileSync(summaryPath, allVcfLines.join('\n'), 'utf-8')
+    fs.writeFileSync(path.join(summaryDir, '汇总.vcf'), allVcfLines.join('\n'), 'utf-8')
   }
 
   // 写入 Radicale 元数据
