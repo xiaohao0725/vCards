@@ -47,6 +47,17 @@ const plugin = (file, _, cb) => {
   }
   vCard.photo.embedFromFile(path.replace('.yaml', '.png'))
   let formatted = vCard.getFormattedString()
+  // 从文件路径提取分类目录名
+  const pathParts = file.path.replace(/\\/g, '/').split('/')
+  const category = pathParts[pathParts.length - 2]
+  if (category) {
+    const vcfLines = formatted.split('\n')
+    const orgIdx = vcfLines.findIndex(l => l.startsWith('ORG'))
+    if (orgIdx !== -1) {
+      vcfLines.splice(orgIdx + 1, 0, `CATEGORIES:${category}`)
+      formatted = vcfLines.join('\n')
+    }
+  }
   formatted = addPhoneticField(formatted, 'ORG')
 
   // 添加带标签的电话号码

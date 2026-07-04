@@ -283,6 +283,7 @@ export default function Import() {
                   <th>组织名称</th>
                   <th>电话</th>
                   <th>邮箱</th>
+                  <th>网址</th>
                   <th style={{ width: 150 }}>分类</th>
                 </tr>
               </thead>
@@ -295,6 +296,7 @@ export default function Import() {
                         onChange={() => toggleSelect(i)}
                       />
                     </td>
+                    <td>
                       {c.photo?.data ? (
                         <img src={c.photo.data} alt="" className="contact-thumb" style={{ width: 36, height: 36 }} />
                       ) : c.photo?.url ? (
@@ -324,6 +326,9 @@ export default function Import() {
                             </div>
                           ))
                         : '-'}
+                    </td>
+                    <td style={{ fontSize: 12 }}>
+                      {c.url ? <a href={c.url} target="_blank" rel="noopener" style={{ color: '#667eea' }}>{new URL(c.url).hostname}</a> : '-'}
                     </td>
                     <td>
                       <select

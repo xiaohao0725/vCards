@@ -50,6 +50,17 @@ const plugin = (file, _, cb) => {
   let rev = new Date(Math.max(new Date(lastYamlChangeDateString), new Date(lastPngChangeDateString))).toISOString()
 
   let formatted = vCard.getFormattedString()
+  // 从文件路径提取分类目录名
+  const pathPartsExt = file.path.replace(/\\/g, '/').split('/')
+  const categoryExt = pathPartsExt[pathPartsExt.length - 2]
+  if (categoryExt) {
+    const vcfLinesExt = formatted.split('\n')
+    const orgIdxExt = vcfLinesExt.findIndex(l => l.startsWith('ORG'))
+    if (orgIdxExt !== -1) {
+      vcfLinesExt.splice(orgIdxExt + 1, 0, `CATEGORIES:${categoryExt}`)
+      formatted = vcfLinesExt.join('\n')
+    }
+  }
   formatted = formatted.replace(/REV:[\d\-:T\.Z]+/, 'REV:' + rev)
   formatted = addPhoneticField(formatted, 'ORG')
 
