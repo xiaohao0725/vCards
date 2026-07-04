@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import vCardsJS from 'vcards-js'
-import { addPhoneticField } from '../../utils/pinyin.js'
+import addPhoneticField from '../../utils/pinyin.js'
 
 const VCF_OUTPUT_DIR = process.env.VCF_OUTPUT_DIR || '/app/vcards-data'
 
