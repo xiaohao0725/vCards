@@ -5,6 +5,8 @@ import addPhoneticField from '../../utils/pinyin.js'
 
 const VCF_OUTPUT_DIR = process.env.VCF_OUTPUT_DIR || '/app/vcards-data'
 
+export { VCF_OUTPUT_DIR }
+
 function writeVcfFile(fileName, vcfString) {
   const outputPath = path.join(VCF_OUTPUT_DIR, `${fileName}.vcf`)
   fs.mkdirSync(path.dirname(outputPath), { recursive: true })

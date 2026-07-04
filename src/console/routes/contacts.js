@@ -1,5 +1,8 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import prisma from '../services/prisma.js'
 import { authMiddleware } from '../middleware/authMiddleware.js'
+import { generateVcfFromContact, VCF_OUTPUT_DIR } from '../services/vcfGenerator.js'
 
 const contactInclude = {
   category: true,
@@ -127,6 +130,19 @@ export default async function contactsRoutes(fastify) {
       include: contactInclude
     })
 
+    // 已发布的联系人自动重新生成 VCF
+    if (contact.status === 'published') {
+      try {
+        const vcfString = generateVcfFromContact(contact)
+        const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
+        const vcfPath = path.join(VCF_OUTPUT_DIR, `${sanitizedName}.vcf`)
+        fs.mkdirSync(VCF_OUTPUT_DIR, { recursive: true })
+        fs.writeFileSync(vcfPath, vcfString, 'utf-8')
+      } catch (err) {
+        fastify.log.warn(`VCF 更新失败: ${contact.organization} - ${err.message}`)
+      }
+    }
+
     return contact
   })
 
@@ -137,6 +153,18 @@ export default async function contactsRoutes(fastify) {
     if (!existing) return reply.code(404).send({ error: '联系人不存在' })
 
     await prisma.contact.delete({ where: { id } })
+
+    // 删除对应的 VCF 文件
+    try {
+      const sanitizedName = existing.organization.replace(/[<>:"/\\|?*]/g, '_')
+      const vcfPath = path.join(VCF_OUTPUT_DIR, `${sanitizedName}.vcf`)
+      if (fs.existsSync(vcfPath)) {
+        fs.unlinkSync(vcfPath)
+      }
+    } catch {
+      // ignore
+    }
+
     return { success: true }
   })
 
