@@ -5,17 +5,27 @@ WORKDIR /app
 RUN apk add --no-cache git && npm install && npm run radicale
 
 
-FROM alpine:edge
+FROM alpine:3.19
 
 RUN apk add --no-cache \
     radicale py3-six\
   && rm -rf /var/cache/apk/* \
   \
   && { \
-    echo '[allow-all]'; \
-    echo 'user: .*'; \
-    echo 'collection: .*'; \
-    echo 'permissions: rRwW'; \
+    echo '[root]'; \
+    echo 'user: .+'; \
+    echo 'collection:'; \
+    echo 'permissions: R'; \
+    echo; \
+    echo '[principal]'; \
+    echo 'user: .+'; \
+    echo 'collection: {user}'; \
+    echo 'permissions: R'; \
+    echo; \
+    echo '[collections]'; \
+    echo 'user: .+'; \
+    echo 'collection: {user}/[^/]+'; \
+    echo 'permissions: rR'; \
   } > /etc/radicale/rights \
   \
   && { \
