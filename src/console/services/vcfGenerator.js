@@ -19,6 +19,7 @@ export function generateVcfFromContact(contact) {
   vCard.organization = contact.organization
 
   if (contact.phones && contact.phones.length > 0) {
+    if (!Array.isArray(vCard.cellPhone)) vCard.cellPhone = []
     contact.phones
       .filter(p => p.number)
       .forEach(p => {
@@ -31,6 +32,7 @@ export function generateVcfFromContact(contact) {
   }
 
   if (contact.emails && contact.emails.length > 0) {
+    if (!Array.isArray(vCard.workEmail)) vCard.workEmail = []
     contact.emails
       .filter(e => e.email)
       .forEach(e => {
