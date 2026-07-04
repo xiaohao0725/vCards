@@ -7,82 +7,143 @@ on:
     - "data/**"
     - ".github/**"
     - "Dockerfile"
+    - "Dockerfile.web"
     - "package.json"
+    - "src/**"
   workflow_dispatch:
 
+env:
+  TZ: "Asia/Shanghai"
+
 jobs:
+  # ==================== 阶段 1：数据构建 + GitHub Release ====================
   release-build:
+    name: 构建数据并发布 Release
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.create_release.outputs.tag_name }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Generate release tag
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 生成版本号
         id: generate_tag
         run: |
           RELEASE_TAG=$(date +'%Y.%m.%d-%H%M%S')
           echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
-      - name: Build
+
+      - name: 安装依赖并构建
         run: |
           npm install
           npm run build
-      - name: Create Release
+
+      - name: 创建 GitHub Release
         id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           RELEASE_TAG="${{ steps.generate_tag.outputs.tag }}"
-          gh release create $RELEASE_TAG public/* --title "Release $RELEASE_TAG" --notes "自动构建发布 $RELEASE_TAG"
+          gh release create $RELEASE_TAG public/* \
+            --title "Release $RELEASE_TAG" \
+            --notes "自动构建发布 $RELEASE_TAG"
           echo "tag_name=$RELEASE_TAG" >> $GITHUB_OUTPUT
-      - name: Delete History Release
+
+      - name: 清理历史 Release（保留最近 5 个）
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
           keep_latest: 5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  docker-build:
-    runs-on: ubuntu-latest
+
+  # ==================== 阶段 2：构建 Radicale 镜像 + 部署 ====================
+  docker-radicale:
+    name: 构建并部署 Radicale
     needs: release-build
+    runs-on:
+      - self-hosted
+      - linux
+      - arm64
+      - vcards
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Set environment variables
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 构建 Docker 镜像
         run: |
-          IMAGE_VERSION="${{ needs.release-build.outputs.release_tag }}"
-          GITHUB_USER="${{ github.repository_owner }}"
-          DOCKER_USER="${{ github.repository_owner }}"
-          echo "IMAGE_VERSION=$IMAGE_VERSION" >> $GITHUB_ENV
-          echo "GITHUB_USER=${GITHUB_USER,,}" >> $GITHUB_ENV
-          echo "DOCKER_USER=${DOCKER_USER,,}" >> $GITHUB_ENV
-          echo "Using release tag as Docker version: $IMAGE_VERSION"
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up docker buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKER_USER }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ env.GITHUB_USER }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Docker build and push
-        uses: docker/build-push-action@v5
-        with:
-          push: true
-          context: .
-          platforms: |
-            linux/amd64
-            linux/arm64/v8
-          tags: |
-            ghcr.io/${{ env.GITHUB_USER }}/vcards:latest
-            ghcr.io/${{ env.GITHUB_USER }}/vcards:stable
-            ghcr.io/${{ env.GITHUB_USER }}/vcards:${{ env.IMAGE_VERSION }}
-            ${{ env.DOCKER_USER }}/vcards:latest
-            ${{ env.DOCKER_USER }}/vcards:stable
-            ${{ env.DOCKER_USER }}/vcards:${{ env.IMAGE_VERSION }}
+          echo ">>> 构建 vcards-radicale 镜像..."
+          DOCKER_BUILDKIT=1 docker build \
+            --provenance=false \
+            -t vcards-radicale:latest .
+
+      - name: 停止旧容器
+        run: |
+          docker rm -f vcards-radicale >/dev/null 2>&1 || true
+
+      - name: 确保网络存在
+        run: |
+          docker network inspect fbk-network >/dev/null 2>&1 || docker network create fbk-network
+
+      - name: 启动新容器
+        run: |
+          docker run -d --name vcards-radicale \
+            --restart always \
+            --network fbk-network \
+            -e TZ=${TZ} \
+            vcards-radicale:latest
+
+      - name: 等待容器启动
+        run: sleep 3
+
+      - name: 检查容器状态
+        run: |
+          if ! docker ps --filter "name=vcards-radicale" --format "{{.Status}}" | grep -q "Up"; then
+            echo "!!! 容器启动失败，查看日志："
+            docker logs vcards-radicale 2>&1 || true
+            exit 1
+          fi
+          echo ">>> vcards-radicale 部署成功!"
+
+  # ==================== 阶段 3：构建 Web 页面 + 部署 ====================
+  build-web:
+    name: 构建并部署 Web 黄页
+    needs: release-build
+    runs-on:
+      - self-hosted
+      - linux
+      - arm64
+      - vcards
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 构建 Docker 镜像
+        run: |
+          echo ">>> 构建 vcards-web 镜像..."
+          DOCKER_BUILDKIT=1 docker build \
+            --provenance=false \
+            -f Dockerfile.web \
+            -t vcards-web:latest .
+
+      - name: 停止旧容器
+        run: |
+          docker rm -f vcards-web >/dev/null 2>&1 || true
+
+      - name: 启动新容器
+        run: |
+          docker run -d --name vcards-web \
+            --restart always \
+            --network fbk-network \
+            -e TZ=${TZ} \
+            vcards-web:latest
+
+      - name: 等待容器启动
+        run: sleep 3
+
+      - name: 检查容器状态
+        run: |
+          if ! docker ps --filter "name=vcards-web" --format "{{.Status}}" | grep -q "Up"; then
+            echo "!!! 容器启动失败，查看日志："
+            docker logs vcards-web 2>&1 || true
+            exit 1
+          fi
+          echo ">>> vcards-web 部署成功!"

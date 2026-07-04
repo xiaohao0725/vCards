@@ -1,0 +1,6 @@
+FROM node:alpine
+COPY . /app
+WORKDIR /app
+RUN npm install && npm run build:web
+EXPOSE 3000
+CMD ["node", "src/serve.js"]

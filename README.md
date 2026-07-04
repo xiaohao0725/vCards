@@ -11,12 +11,12 @@
 ### 方法一：安装 CardDAV 描述文件（推荐）
 
 1. 使用**系统相机**扫描下方二维码，下载配置描述文件  
->   <a href="https://vcards.metowolf.com/vcards.mobileconfig"><img src="https://github.com/user-attachments/assets/238f9d9a-5aa6-4636-8e67-4829535eaab9" width="150px" height="150px" /></a>
+>   <a href="https://vcards.codexs.cn/vcards.mobileconfig"><img src="https://github.com/user-attachments/assets/238f9d9a-5aa6-4636-8e67-4829535eaab9" width="150px" height="150px" /></a>
 
-2. 打开“设置”App，轻点“已下载描述文件”或“注册 [组织的名称]”  
+2. 打开"设置"App，轻点"已下载描述文件"或"注册 [组织的名称]"  
 >   <img src="https://github.com/user-attachments/assets/12997c2d-6172-49f0-9236-0b4f30ad9ebd" width="300px" />
 
-3. 在右上角点击“安装”，按屏幕提示操作完成导入。
+3. 在右上角点击"安装"，按屏幕提示操作完成导入。
 
 ---
 
@@ -25,11 +25,11 @@
 
 采用订阅方式导入，优势是会自动更新，也方便区分和管理个人通讯录和黄页，避免混合两种列表。
 
-- 服务器：`vcards.metowolf.com`
+- 服务器：`vcards.codexs.cn`
 - 用户名：`cn`
 - 密码：`cn` 或任意填写
 
-如担心隐私问题，可参考 [自建教程](https://github.com/metowolf/vCards/issues/208)。
+如担心隐私问题，可参考 [自建教程](https://github.com/xiaohao0725/vCards)。
 
 #### 设置步骤
 
@@ -50,12 +50,12 @@
 <details>
 <summary><strong>方法三：下载导入</strong></summary>
 
-1. 前往 [Releases 页面](https://github.com/metowolf/vCards/releases) 下载最新打包文件 `archive.zip`
+1. 前往 [Releases 页面](https://github.com/xiaohao0725/vCards/releases) 下载最新打包文件 `archive.zip`
 2. 解压后，根据不同平台指南导入 `vcf` 文件至 iCloud（建议单独创建「黄页」分组以便管理与隐藏）
 
 #### macOS
-- [在 Mac 上的“通讯录”中创建联系人群组](https://support.apple.com/zh-cn/guide/contacts/adrb3280fe91/12.0/mac/10.14)
-- [在 Mac 上的“通讯录”中导入来自其他应用的联系人](https://support.apple.com/zh-cn/guide/contacts/adrbk1457/mac)
+- [在 Mac 上的"通讯录"中创建联系人群组](https://support.apple.com/zh-cn/guide/contacts/adrb3280fe91/12.0/mac/10.14)
+- [在 Mac 上的"通讯录"中导入来自其他应用的联系人](https://support.apple.com/zh-cn/guide/contacts/adrbk1457/mac)
 
 #### iOS / Web
 - [在 iCloud 通讯录中创建群组](https://support.apple.com/kb/PH2667?locale=zh_CN)
@@ -67,7 +67,7 @@
 
 ## 请求收录
 
-1. 打开 [新增 vCard 请求](https://github.com/metowolf/vCards/issues/new/choose) 页面，选择「vCard 新增请求」
+1. 打开 [新增 vCard 请求](https://github.com/xiaohao0725/vCards/issues/new/choose) 页面，选择「vCard 新增请求」
 2. 完整填写相关信息
 3. 提交 Issue，等待处理
 

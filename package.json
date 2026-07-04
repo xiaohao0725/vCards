@@ -11,8 +11,9 @@
     "gulp": "gulp --gulpfile src/gulpfile.js --cwd ./",
     "test": "npx ava src/test.js"
   },
-  "repository": "git@github.com:metowolf/vCards.git",
+  "repository": "git@github.com:xiaohao0725/vCards.git",
   "author": "metowolf <i@i-meto.com>",
+  "contributors": ["xiaohao0725"],
   "license": "MIT",
   "private": true,
   "devDependencies": {
