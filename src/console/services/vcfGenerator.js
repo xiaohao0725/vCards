@@ -23,28 +23,18 @@ export function generateVcfFromContact(contact) {
   if (contact.phones && contact.phones.length > 0) {
     if (!Array.isArray(vCard.cellPhone)) vCard.cellPhone = []
     contact.phones
-      .filter(p => p.number)
+      .filter(p => p.number && !p.label)
       .forEach(p => {
-        const num = typeof p.number === 'object' ? String(p.number.number) : String(p.number)
-        if (p.label) {
-          vCard.cellPhone.push({ number: num, label: p.label })
-        } else {
-          vCard.cellPhone.push(num)
-        }
+        vCard.cellPhone.push(String(p.number))
       })
   }
 
   if (contact.emails && contact.emails.length > 0) {
     if (!Array.isArray(vCard.workEmail)) vCard.workEmail = []
     contact.emails
-      .filter(e => e.email)
+      .filter(e => e.email && !e.label)
       .forEach(e => {
-        const addr = typeof e.email === 'object' ? String(e.email.email) : String(e.email)
-        if (e.label) {
-          vCard.workEmail.push({ email: addr, label: e.label })
-        } else {
-          vCard.workEmail.push(addr)
-        }
+        vCard.workEmail.push(String(e.email))
       })
   }
 
