@@ -328,7 +328,7 @@ export default async function vcfRoutes(fastify) {
     const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
 
     reply.header('Content-Type', 'text/vcard; charset=utf-8')
-    reply.header('Content-Disposition', `attachment; filename="${sanitizedName}.vcf"`)
+    reply.header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(sanitizedName)}.vcf`)
     return vcfString
   })
 
