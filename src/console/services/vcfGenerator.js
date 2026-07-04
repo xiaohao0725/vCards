@@ -81,17 +81,52 @@ export function generateVcfFromContact(contact) {
   return formatted
 }
 
-export function generateAllVcfFiles(contacts) {
+export function generateAllVcfFiles(contacts, silent = false) {
+  // 清空旧 vcf 文件
+  if (fs.existsSync(VCF_OUTPUT_DIR)) {
+    const oldFiles = fs.readdirSync(VCF_OUTPUT_DIR)
+    for (const file of oldFiles) {
+      if (file.endsWith('.vcf') || file === '.Radicale.props') {
+        fs.unlinkSync(path.join(VCF_OUTPUT_DIR, file))
+      }
+    }
+  } else {
+    fs.mkdirSync(VCF_OUTPUT_DIR, { recursive: true })
+  }
+
   const results = []
+  const allVcfLines = []
+
   for (const contact of contacts) {
     try {
       const vcfString = generateVcfFromContact(contact)
       const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
-      const filePath = writeVcfFile(sanitizedName, vcfString)
-      results.push({ organization: contact.organization, path: filePath, success: true })
+      const fileName = `${sanitizedName}.vcf`
+      const filePath = path.join(VCF_OUTPUT_DIR, fileName)
+      fs.writeFileSync(filePath, vcfString, 'utf-8')
+      allVcfLines.push(vcfString)
+      if (!silent) {
+        results.push({ organization: contact.organization, path: filePath, success: true })
+      }
     } catch (err) {
-      results.push({ organization: contact.organization, success: false, error: err.message })
+      if (!silent) {
+        results.push({ organization: contact.organization, success: false, error: err.message })
+      }
     }
   }
+
+  // 写入汇总文件
+  if (allVcfLines.length > 0) {
+    const summaryPath = path.join(VCF_OUTPUT_DIR, '汇总.vcf')
+    fs.writeFileSync(summaryPath, allVcfLines.join('\n'), 'utf-8')
+  }
+
+  // 写入 Radicale 元数据
+  const propContent = JSON.stringify({
+    'D:displayname': `全部(${contacts.length})`,
+    tag: 'VADDRESSBOOK'
+  })
+  fs.writeFileSync(path.join(VCF_OUTPUT_DIR, '.Radicale.props'), propContent, 'utf-8')
+
   return results
 }

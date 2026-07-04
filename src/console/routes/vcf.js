@@ -294,14 +294,6 @@ export default async function vcfRoutes(fastify) {
     const successes = results.filter(r => r.success)
     const failures = results.filter(r => !r.success)
 
-    if (successes.length > 0) {
-      const allVcf = successes
-        .map(r => fs.readFileSync(r.path, 'utf-8'))
-        .join('\n')
-      const summaryPath = path.join(VCF_OUTPUT_DIR, '汇总.vcf')
-      fs.writeFileSync(summaryPath, allVcf, 'utf-8')
-    }
-
     return {
       total: results.length,
       success: successes.length,
