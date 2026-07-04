@@ -20,7 +20,7 @@ RUN apk add --no-cache \
     echo '[principal]'; \
     echo 'user: .+'; \
     echo 'collection: {user}'; \
-    echo 'permissions: R'; \
+    echo 'permissions: rR'; \
     echo; \
     echo '[collections]'; \
     echo 'user: .+'; \
