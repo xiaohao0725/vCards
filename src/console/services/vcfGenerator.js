@@ -48,6 +48,16 @@ export function generateVcfFromContact(contact) {
 
   let formatted = vCard.getFormattedString()
 
+  // 添加分类信息
+  if (contact.category?.name) {
+    const lines = formatted.split('\n')
+    const orgIndex = lines.findIndex(l => l.startsWith('ORG'))
+    if (orgIndex !== -1) {
+      lines.splice(orgIndex + 1, 0, `CATEGORIES:${contact.category.name}`)
+      formatted = lines.join('\n')
+    }
+  }
+
   // 添加拼音字段
   formatted = addPhoneticField(formatted, 'ORG')
 

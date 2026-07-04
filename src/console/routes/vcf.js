@@ -281,6 +281,7 @@ export default async function vcfRoutes(fastify) {
     const publishedContacts = await prisma.contact.findMany({
       where: { status: 'published' },
       include: {
+        category: true,
         phones: { orderBy: { sortOrder: 'asc' } },
         emails: { orderBy: { sortOrder: 'asc' } }
       }
@@ -316,6 +317,7 @@ export default async function vcfRoutes(fastify) {
     const contact = await prisma.contact.findUnique({
       where: { id: Number(request.params.id) },
       include: {
+        category: true,
         phones: { orderBy: { sortOrder: 'asc' } },
         emails: { orderBy: { sortOrder: 'asc' } }
       }
@@ -335,6 +337,7 @@ export default async function vcfRoutes(fastify) {
     const publishedContacts = await prisma.contact.findMany({
       where: { status: 'published' },
       include: {
+        category: true,
         phones: { orderBy: { sortOrder: 'asc' } },
         emails: { orderBy: { sortOrder: 'asc' } }
       }
