@@ -13,7 +13,10 @@ export function getToken() {
 }
 
 async function request(url, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...options.headers }
+  const headers = { ...options.headers }
+  if (options.body) {
+    headers['Content-Type'] = 'application/json'
+  }
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`
 
   const res = await fetch(`${API_BASE}${url}`, { ...options, headers })
