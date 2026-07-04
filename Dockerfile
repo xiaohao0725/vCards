@@ -2,7 +2,7 @@ FROM node:alpine as builder
 
 COPY . /app
 WORKDIR /app
-RUN npm install && npm run radicale
+RUN apk add --no-cache git && npm install && npm run radicale
 
 
 FROM alpine:edge
