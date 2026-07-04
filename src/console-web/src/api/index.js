@@ -66,8 +66,8 @@ export const api = {
     }).then(r => r.json())
   },
 
-  saveImport: (contacts, categoryId, newCategories = []) =>
-    request('/vcf/import/save', { method: 'POST', body: JSON.stringify({ contacts, categoryId, newCategories }) }),
+  saveImport: (contacts, newCategories = []) =>
+    request('/vcf/import/save', { method: 'POST', body: JSON.stringify({ contacts, newCategories }) }),
 
   publish: () =>
     request('/vcf/publish', { method: 'POST' }),

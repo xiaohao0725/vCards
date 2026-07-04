@@ -173,25 +173,41 @@ export default async function vcfRoutes(fastify) {
 
   // 批量导入到数据库
   fastify.post('/vcf/import/save', async (request, reply) => {
-    const { contacts: importedContacts, categoryId, newCategories = [] } = request.body || {}
+    const { contacts: importedContacts, newCategories = [] } = request.body || {}
     if (!importedContacts || !importedContacts.length) {
       return reply.code(400).send({ error: '没有可导入的联系人' })
     }
 
-    // 自动创建新的分类
+    // 自动创建新的分类（来自弹窗确认的）
     const createdCats = {}
     for (const catName of newCategories) {
-      const cat = await prisma.category.create({
-        data: { name: catName, sortOrder: 999 }
-      })
-      createdCats[catName] = cat.id
+      const existing = await prisma.category.findUnique({ where: { name: catName } })
+      if (!existing) {
+        const cat = await prisma.category.create({
+          data: { name: catName, sortOrder: 999 }
+        })
+        createdCats[catName] = cat.id
+      }
+    }
+
+    // 为那些前端指定了 _categoryName 但不在 newCategories 中的分类也自动创建
+    for (const c of importedContacts) {
+      if (c._categoryName && !createdCats[c._categoryName]) {
+        const existing = await prisma.category.findUnique({ where: { name: c._categoryName } })
+        if (!existing) {
+          const cat = await prisma.category.create({
+            data: { name: c._categoryName, sortOrder: 999 }
+          })
+          createdCats[c._categoryName] = cat.id
+        }
+      }
     }
 
     // 获取所有分类的 name -> id 映射
     const allCats = await prisma.category.findMany()
     const catNameToId = {}
-    for (const c of allCats) {
-      catNameToId[c.name] = c.id
+    for (const cat of allCats) {
+      catNameToId[cat.name] = cat.id
     }
 
     const results = []
@@ -209,9 +225,13 @@ export default async function vcfRoutes(fastify) {
         }
       }
 
-      // 确定分类
-      let resolvedCategoryId = categoryId ? Number(categoryId) : null
-      if (!resolvedCategoryId && c.categories?.length) {
+      // 确定分类：优先使用前端传入的 _categoryId / _categoryName
+      let resolvedCategoryId = null
+      if (c._categoryId) {
+        resolvedCategoryId = Number(c._categoryId)
+      } else if (c._categoryName) {
+        resolvedCategoryId = catNameToId[c._categoryName] || createdCats[c._categoryName] || null
+      } else if (c.categories?.length) {
         for (const catName of c.categories) {
           const id = catNameToId[catName] || createdCats[catName]
           if (id) { resolvedCategoryId = id; break }

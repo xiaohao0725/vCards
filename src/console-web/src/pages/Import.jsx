@@ -6,16 +6,27 @@ export default function Import() {
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)
   const [categories, setCategories] = useState([])
-  const [categoryId, setCategoryId] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showUnknownDialog, setShowUnknownDialog] = useState(false)
   const [unknownChecks, setUnknownChecks] = useState({})
   const [importResult, setImportResult] = useState(null)
+  // 每个联系人的分类选择: { [index]: categoryId | "new:XXX" | "" (不设分类) }
+  const [contactSelections, setContactSelections] = useState({})
   const navigate = useNavigate()
 
   useEffect(() => { api.getCategories().then(setCategories) }, [])
+
+  const resolveCategoryId = (parsedCats, existingCats) => {
+    if (!parsedCats?.length) return ''
+    for (const name of parsedCats) {
+      const found = existingCats.find(c => c.name === name)
+      if (found) return String(found.id)
+    }
+    // 全部是未知分类
+    return `new:${parsedCats[0]}`
+  }
 
   const handleFileChange = (e) => {
     const f = e.target.files[0]
@@ -24,6 +35,7 @@ export default function Import() {
     setParsed(null)
     setImportResult(null)
     setError('')
+    setContactSelections({})
   }
 
   const handleParse = async () => {
@@ -33,6 +45,13 @@ export default function Import() {
     try {
       const result = await api.importVcf(file)
       setParsed(result)
+
+      // 为每个联系人计算初始分类选择
+      const selections = {}
+      result.contacts.forEach((c, i) => {
+        selections[i] = resolveCategoryId(c.categories, result.existingCategories || [])
+      })
+      setContactSelections(selections)
 
       if (result.count === 0) {
         setError('未解析到任何联系人')
@@ -49,6 +68,30 @@ export default function Import() {
     }
   }
 
+  const handleUnknownConfirm = () => {
+    setShowUnknownDialog(false)
+    // 对于未勾选的未知分类，将对应联系人的选择改为空
+    const updated = { ...contactSelections }
+    const uncheckedCats = Object.entries(unknownChecks)
+      .filter(([, checked]) => !checked)
+      .map(([name]) => name)
+    if (uncheckedCats.length > 0) {
+      Object.entries(updated).forEach(([i, val]) => {
+        if (typeof val === 'string' && val.startsWith('new:')) {
+          const catName = val.slice(4)
+          if (uncheckedCats.includes(catName)) {
+            updated[i] = ''
+          }
+        }
+      })
+    }
+    setContactSelections(updated)
+  }
+
+  const handleContactCategoryChange = (index, value) => {
+    setContactSelections(prev => ({ ...prev, [index]: value }))
+  }
+
   const handleSave = async () => {
     if (!parsed || !parsed.contacts.length) return
     setSaving(true)
@@ -57,13 +100,48 @@ export default function Import() {
       const newCats = Object.entries(unknownChecks)
         .filter(([, checked]) => checked)
         .map(([name]) => name)
-      const result = await api.saveImport(parsed.contacts, categoryId, newCats)
-      setImportResult(result)
+
+      // 为每个联系人附加独立分类信息
+      const contactsWithCategory = parsed.contacts.map((c, i) => {
+        const sel = contactSelections[i] || ''
+        const catId = sel.startsWith('new:') ? null : (sel ? Number(sel) : null)
+        const catName = sel.startsWith('new:') ? sel.slice(4) : null
+        return { ...c, _categoryId: catId, _categoryName: catName }
+      })
+
+      const result = await api.saveImport(contactsWithCategory, newCats)
+      setImportResult({
+        count: result.count,
+        contacts: result.contacts,
+        newCategoriesCreated: result.newCategoriesCreated || []
+      })
     } catch (err) {
       setError(`导入失败: ${err.message}`)
     } finally {
       setSaving(false)
     }
+  }
+
+  const getCategoryLabel = (val, cats) => {
+    if (!val) return '不设分类'
+    if (val.startsWith('new:')) {
+      const name = val.slice(4)
+      const checked = unknownChecks[name] !== false
+      return checked ? `新建:${name}` : '不设分类（未创建）'
+    }
+    const cat = cats.find(c => String(c.id) === val)
+    return cat?.name || '未知'
+  }
+
+  const getCategoryStyle = (val) => {
+    if (!val) return {}
+    if (val.startsWith('new:')) {
+      const name = val.slice(4)
+      return unknownChecks[name] !== false
+        ? { color: '#388e3c', fontWeight: 600 }
+        : { color: '#999' }
+    }
+    return {}
   }
 
   return (
@@ -99,7 +177,7 @@ export default function Import() {
               未勾选的分类，对应联系人将不设分类
             </p>
             <div className="form-actions">
-              <button onClick={() => setShowUnknownDialog(false)} className="btn-primary">确认</button>
+              <button onClick={handleUnknownConfirm} className="btn-primary">确认</button>
             </div>
           </div>
         </div>
@@ -109,13 +187,21 @@ export default function Import() {
       {importResult && (
         <div className="import-preview">
           <h3>导入完成</h3>
-          <p>成功导入 <strong>{importResult.count}</strong> 个联系人</p>
+          <p>成功导入 <strong>{importResult.count}</strong> / {importResult.total} 个联系人</p>
           {importResult.newCategoriesCreated?.length > 0 && (
             <p>新建分类: {importResult.newCategoriesCreated.join(', ')}</p>
           )}
+          {importResult.errors?.length > 0 && (
+            <div className="error-msg">
+              <p>失败:</p>
+              {importResult.errors.slice(0, 5).map((e, i) => (
+                <div key={i}>{e.organization}: {e.error}</div>
+              ))}
+            </div>
+          )}
           <div className="form-actions">
             <button onClick={() => navigate('/')} className="btn-primary">返回列表</button>
-            <button onClick={() => { setImportResult(null); setParsed(null); setFile(null) }} className="btn-secondary">
+            <button onClick={() => { setImportResult(null); setParsed(null); setFile(null); setContactSelections({}) }} className="btn-secondary">
               继续导入
             </button>
           </div>
@@ -126,16 +212,9 @@ export default function Import() {
       {parsed && parsed.count > 0 && !importResult && (
         <div className="import-preview">
           <h3>解析结果：共 {parsed.count} 个联系人</h3>
-
-          <div className="form-group">
-            <label>统一分类（将覆盖文件中的分类）</label>
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">不覆盖</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          </div>
+          <p style={{ color: '#888', fontSize: 13, marginBottom: 12 }}>
+            每行的「分类」列已根据 VCF 数据自动选择，可手动修改
+          </p>
 
           <div style={{ maxHeight: 500, overflow: 'auto' }}>
             <table className="contact-table">
@@ -145,7 +224,7 @@ export default function Import() {
                   <th>组织名称</th>
                   <th>电话</th>
                   <th>邮箱</th>
-                  <th>分类</th>
+                  <th style={{ width: 150 }}>分类</th>
                 </tr>
               </thead>
               <tbody>
@@ -182,8 +261,32 @@ export default function Import() {
                           ))
                         : '-'}
                     </td>
-                    <td style={{ fontSize: 12 }}>
-                      {c.categories?.length ? c.categories.join(', ') : '-'}
+                    <td>
+                      <select
+                        value={contactSelections[i] || ''}
+                        onChange={(e) => handleContactCategoryChange(i, e.target.value)}
+                        style={{ ...getCategoryStyle(contactSelections[i] || ''), width: '100%', fontSize: 12, padding: '4px 6px', border: '1px solid #ddd', borderRadius: 4 }}
+                      >
+                        <option value="">不设分类</option>
+                        {categories.filter(cat => {
+                          // 排除已选为 "new:" 的未知分类
+                          return true
+                        }).map((cat) => (
+                          <option key={cat.id} value={String(cat.id)}>{cat.name}</option>
+                        ))}
+                        {/* 未知分类选项 */}
+                        {c.categories?.map((catName) => {
+                          const exists = categories.some(dc => dc.name === catName)
+                          if (!exists) {
+                            return (
+                              <option key={`new-${catName}`} value={`new:${catName}`}>
+                                新建: {catName}
+                              </option>
+                            )
+                          }
+                          return null
+                        })}
+                      </select>
                     </td>
                   </tr>
                 ))}
@@ -195,7 +298,7 @@ export default function Import() {
             <button onClick={handleSave} disabled={saving} className="btn-primary">
               {saving ? '导入中（含图片上传）...' : `导入 ${parsed.count} 个联系人`}
             </button>
-            <button onClick={() => navigate('/')} className="btn-secondary">取消</button>
+            <button onClick={() => { setParsed(null); setFile(null) }} className="btn-secondary">取消</button>
           </div>
         </div>
       )}
