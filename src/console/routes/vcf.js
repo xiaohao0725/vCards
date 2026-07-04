@@ -271,7 +271,6 @@ export default async function vcfRoutes(fastify) {
 
     return reply.code(201).send({
       count: results.length,
-      contacts: results,
       newCategoriesCreated: Object.keys(createdCats)
     })
   })

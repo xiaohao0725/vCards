@@ -143,7 +143,6 @@ export default function Import() {
       const result = await api.saveImport(contactsWithCategory, newCats)
       setImportResult({
         count: result.count,
-        contacts: result.contacts,
         newCategoriesCreated: result.newCategoriesCreated || []
       })
     } catch (err) {

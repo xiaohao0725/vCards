@@ -17,9 +17,17 @@ async function request(url, options = {}) {
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`
 
   const res = await fetch(`${API_BASE}${url}`, { ...options, headers })
-  const data = await res.json()
 
-  if (!res.ok) throw new Error(data.error || '请求失败')
+  let data
+  const contentType = res.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    data = await res.json()
+  } else {
+    const text = await res.text()
+    throw new Error(`服务器返回异常 (${res.status}): ${text.slice(0, 100)}`)
+  }
+
+  if (!res.ok) throw new Error(data?.error || `请求失败 (${res.status})`)
   return data
 }
 
