@@ -33,7 +33,7 @@ RUN apk add --no-cache \
     echo 'hosts = 0.0.0.0:5232, [::]:5232'; \
     echo; \
     echo '[auth]'; \
-    echo 'type = none'; \
+    echo 'type = http_x_remote_user'; \
     echo; \
     echo '[web]'; \
     echo 'type = none'; \
