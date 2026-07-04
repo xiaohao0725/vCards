@@ -1,0 +1,32 @@
+FROM node:alpine AS frontend-builder
+
+COPY src/console-web/ /app
+WORKDIR /app
+RUN npm install && VITE_OUT_DIR=dist npm run build
+
+FROM node:alpine AS backend-builder
+
+COPY package.json package-lock.json ./
+RUN npm install --production
+
+COPY src/db/ ./src/db/
+RUN npx prisma generate --schema=src/db/schema.prisma
+
+FROM node:alpine
+
+WORKDIR /app
+
+COPY --from=backend-builder /node_modules ./node_modules
+COPY --from=backend-builder /src/db ./src/db
+COPY package.json ./
+
+COPY src/console/ ./src/console/
+COPY src/utils/ ./src/utils/
+COPY src/plugins/ ./src/plugins/
+COPY src/const/ ./src/const/
+
+COPY --from=frontend-builder /app/dist/ ./public/console/
+
+EXPOSE 3001
+
+CMD ["node", "src/console/server.js"]

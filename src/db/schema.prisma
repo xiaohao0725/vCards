@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Category {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique @db.VarChar(50)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  contacts  Contact[]
+
+  @@map("categories")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique @db.VarChar(50)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("users")
+}
+
+model Contact {
+  id           Int            @id @default(autoincrement())
+  organization String         @db.VarChar(200)
+  categoryId   Int?           @map("category_id")
+  category     Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  url          String?        @db.VarChar(500)
+  imagePath    String?        @map("image_path") @db.VarChar(500)
+  status       String         @default("draft") @db.VarChar(20)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  phones       ContactPhone[]
+  emails       ContactEmail[]
+
+  @@index([status])
+  @@index([categoryId])
+  @@index([organization])
+  @@map("contacts")
+}
+
+model ContactPhone {
+  id        Int     @id @default(autoincrement())
+  contactId Int     @map("contact_id")
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  number    String  @db.VarChar(50)
+  label     String? @db.VarChar(100)
+  sortOrder Int     @default(0) @map("sort_order")
+
+  @@index([contactId])
+  @@map("contact_phones")
+}
+
+model ContactEmail {
+  id        Int     @id @default(autoincrement())
+  contactId Int     @map("contact_id")
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  email     String  @db.VarChar(200)
+  label     String? @db.VarChar(100)
+  sortOrder Int     @default(0) @map("sort_order")
+
+  @@index([contactId])
+  @@map("contact_emails")
+}

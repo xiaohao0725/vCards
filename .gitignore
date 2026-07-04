@@ -1,6 +1,7 @@
 node_modules
 temp
 public
+public/console
 *.zip
 .DS_Store
 radicale

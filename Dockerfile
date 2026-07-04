@@ -50,6 +50,8 @@ RUN apk add --no-cache \
 COPY --from=builder /app/radicale/ios/ /app/vcards/collection-root/cn/
 COPY --from=builder /app/radicale/macos/ /app/vcards/collection-root/cnmacos/
 
+VOLUME /app/vcards/collection-root/cn
+
 EXPOSE 5232
 
 CMD ["radicale"]

@@ -11,6 +11,7 @@ on:
     - ".github/**"
     - "Dockerfile"
     - "Dockerfile.web"
+    - "Dockerfile.console"
     - "package.json"
     - "src/**"
   workflow_dispatch:
@@ -78,6 +79,10 @@ jobs:
             --provenance=false \
             -t vcards-radicale:latest .
 
+      - name: 确保共享卷存在
+        run: |
+          docker volume inspect vcards-data >/dev/null 2>&1 || docker volume create vcards-data
+
       - name: 停止旧容器
         run: |
           docker rm -f vcards-radicale >/dev/null 2>&1 || true
@@ -91,6 +96,7 @@ jobs:
           docker run -d --name vcards-radicale \
             --restart always \
             --network fbk-network \
+            -v vcards-data:/app/vcards/collection-root/cn \
             -e TZ=${TZ} \
             vcards-radicale:latest
 
@@ -150,3 +156,64 @@ jobs:
             exit 1
           fi
           echo ">>> vcards-web 部署成功!"
+
+  # ==================== 阶段 4：构建 Console + 部署 ====================
+  build-console:
+    name: 构建并部署 Console
+    needs: release-build
+    runs-on:
+      - self-hosted
+      - linux
+      - arm64
+      - vcards
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 构建 Console 镜像
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo ">>> 构建 vcards-console 镜像..."
+          DOCKER_BUILDKIT=1 docker build \
+            --provenance=false \
+            --build-arg DATABASE_URL="$DATABASE_URL" \
+            -f Dockerfile.console \
+            -t vcards-console:latest .
+
+      - name: 停止旧容器
+        run: |
+          docker rm -f vcards-console >/dev/null 2>&1 || true
+
+      - name: 启动新容器
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          docker run -d --name vcards-console \
+            --restart always \
+            --network fbk-network \
+            -v vcards-data:/app/vcards-data \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -e JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            -e QINIU_ACCESS_KEY="${{ secrets.QINIU_ACCESS_KEY }}" \
+            -e QINIU_SECRET_KEY="${{ secrets.QINIU_SECRET_KEY }}" \
+            -e QINIU_IMAGE_BUCKET="${{ secrets.QINIU_IMAGE_BUCKET }}" \
+            -e QINIU_FILE_BUCKET="${{ secrets.QINIU_FILE_BUCKET }}" \
+            -e QINIU_REGION="${{ secrets.QINIU_REGION }}" \
+            -e QINIU_IMAGE_DOMAIN="${{ secrets.QINIU_IMAGE_DOMAIN }}" \
+            -e QINIU_FILE_DOMAIN="${{ secrets.QINIU_FILE_DOMAIN }}" \
+            -e VCF_OUTPUT_DIR=/app/vcards-data \
+            -e TZ=${TZ} \
+            vcards-console:latest
+
+      - name: 等待容器启动
+        run: sleep 3
+
+      - name: 检查容器状态
+        run: |
+          if ! docker ps --filter "name=vcards-console" --format "{{.Status}}" | grep -q "Up"; then
+            echo "!!! 容器启动失败，查看日志："
+            docker logs vcards-console 2>&1 || true
+            exit 1
+          fi
+          echo ">>> vcards-console 部署成功!"
