@@ -44,7 +44,7 @@ body {
 .btn-link { background: none; border: none; color: #667eea; cursor: pointer; font-size: 14px; }
 
 /* ===== 内容区 ===== */
-.console-main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+.console-main { padding: 24px; max-width: 1400px; margin: 0 auto; }
 
 /* ===== 工具栏 ===== */
 .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
@@ -101,7 +101,7 @@ select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-siz
 .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ===== 表单 ===== */
-.editor, .import-page { background: white; padding: 32px; border-radius: 8px; max-width: 700px; }
+.editor, .import-page { background: white; padding: 32px; border-radius: 8px; }
 .editor h2, .import-page h2 { margin-bottom: 24px; color: #333; }
 .form-group { margin-bottom: 16px; }
 .form-group label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: #555; }
