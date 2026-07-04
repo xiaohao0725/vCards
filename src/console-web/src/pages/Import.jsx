@@ -14,6 +14,8 @@ export default function Import() {
   const [importResult, setImportResult] = useState(null)
   // 每个联系人的分类选择: { [index]: categoryId | "new:XXX" | "" (不设分类) }
   const [contactSelections, setContactSelections] = useState({})
+  const [selectedContacts, setSelectedContacts] = useState(new Set())
+  const [batchCategory, setBatchCategory] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => { api.getCategories().then(setCategories) }, [])
@@ -90,6 +92,35 @@ export default function Import() {
 
   const handleContactCategoryChange = (index, value) => {
     setContactSelections(prev => ({ ...prev, [index]: value }))
+  }
+
+  const toggleSelect = (index) => {
+    setSelectedContacts(prev => {
+      const next = new Set(prev)
+      next.has(index) ? next.delete(index) : next.add(index)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (!parsed) return
+    if (selectedContacts.size === parsed.contacts.length) {
+      setSelectedContacts(new Set())
+    } else {
+      setSelectedContacts(new Set(parsed.contacts.map((_, i) => i)))
+    }
+  }
+
+  const handleBatchCategory = () => {
+    if (!batchCategory || !parsed) return
+    const count = selectedContacts.size
+    setContactSelections(prev => {
+      const updated = { ...prev }
+      selectedContacts.forEach(i => { updated[i] = batchCategory })
+      return updated
+    })
+    setSelectedContacts(new Set())
+    setBatchCategory('')
   }
 
   const handleSave = async () => {
@@ -216,10 +247,38 @@ export default function Import() {
             每行的「分类」列已根据 VCF 数据自动选择，可手动修改
           </p>
 
+          {/* 批量设置分类 */}
+          {selectedContacts.size > 0 && (
+            <div style={{ background: '#f0f4ff', padding: '10px 14px', borderRadius: 8, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>已选 {selectedContacts.size} 个联系人</span>
+              <select
+                value={batchCategory}
+                onChange={(e) => setBatchCategory(e.target.value)}
+                style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: 4, fontSize: 13 }}
+              >
+                <option value="">批量设置分类...</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={String(cat.id)}>{cat.name}</option>
+                ))}
+                <option value="">不设分类</option>
+              </select>
+              <button onClick={handleBatchCategory} disabled={!batchCategory} className="btn-sm" style={{ background: '#667eea', color: 'white', border: 'none' }}>
+                应用
+              </button>
+              <button onClick={() => setSelectedContacts(new Set())} className="btn-sm">取消选择</button>
+            </div>
+          )}
+
           <div style={{ maxHeight: 500, overflow: 'auto' }}>
             <table className="contact-table">
               <thead>
                 <tr>
+                  <th style={{ width: 30 }}>
+                    <input type="checkbox"
+                      checked={parsed && selectedContacts.size === parsed.contacts.length}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
                   <th style={{ width: 40 }}>图片</th>
                   <th>组织名称</th>
                   <th>电话</th>
@@ -229,8 +288,13 @@ export default function Import() {
               </thead>
               <tbody>
                 {parsed.contacts.map((c, i) => (
-                  <tr key={i}>
+                  <tr key={i} style={selectedContacts.has(i) ? { background: '#f0f4ff' } : {}}>
                     <td>
+                      <input type="checkbox"
+                        checked={selectedContacts.has(i)}
+                        onChange={() => toggleSelect(i)}
+                      />
+                    </td>
                       {c.photo?.data ? (
                         <img src={c.photo.data} alt="" className="contact-thumb" style={{ width: 36, height: 36 }} />
                       ) : c.photo?.url ? (
