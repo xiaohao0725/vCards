@@ -3,6 +3,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Editor from './pages/Editor'
 import Import from './pages/Import'
+import Categories from './pages/Categories'
 import { AuthProvider, useAuth } from './components/AuthContext'
 import Layout from './components/Layout'
 
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/new" element={<Editor />} />
           <Route path="/:id/edit" element={<Editor />} />
           <Route path="/import" element={<Import />} />
+          <Route path="/categories" element={<Categories />} />
         </Route>
       </Routes>
     </AuthProvider>

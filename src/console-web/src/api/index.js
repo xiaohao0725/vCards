@@ -45,6 +45,17 @@ export const api = {
 
   getCategories: () => request('/categories'),
 
+  createCategory: (name) =>
+    request('/categories', { method: 'POST', body: JSON.stringify({ name }) }),
+
+  updateCategory: (id, data) =>
+    request(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  deleteCategory: (id, migrateTo) => {
+    const qs = migrateTo ? `?migrateTo=${migrateTo}` : ''
+    return request(`/categories/${id}${qs}`, { method: 'DELETE' })
+  },
+
   importVcf: (file) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -55,8 +66,8 @@ export const api = {
     }).then(r => r.json())
   },
 
-  saveImport: (contacts, categoryId) =>
-    request('/vcf/import/save', { method: 'POST', body: JSON.stringify({ contacts, categoryId }) }),
+  saveImport: (contacts, categoryId, newCategories = []) =>
+    request('/vcf/import/save', { method: 'POST', body: JSON.stringify({ contacts, categoryId, newCategories }) }),
 
   publish: () =>
     request('/vcf/publish', { method: 'POST' }),

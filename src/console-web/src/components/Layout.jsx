@@ -18,6 +18,7 @@ export default function Layout() {
           <NavLink to="/" end>联系人</NavLink>
           <NavLink to="/new">新建</NavLink>
           <NavLink to="/import">导入</NavLink>
+          <NavLink to="/categories">分类</NavLink>
         </div>
         <div className="nav-right">
           <span className="nav-user">{username}</span>
