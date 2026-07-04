@@ -7,14 +7,21 @@ export function signToken(userId, username) {
 }
 
 export async function authMiddleware(request, reply) {
-  const authHeader = request.headers.authorization
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  let token = request.query.token || ''
+
+  if (!token) {
+    const authHeader = request.headers.authorization
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1]
+    }
+  }
+
+  if (!token) {
     reply.code(401).send({ error: '未授权访问' })
     return
   }
 
   try {
-    const token = authHeader.split(' ')[1]
     const decoded = jwt.verify(token, JWT_SECRET)
     request.user = decoded
   } catch {
