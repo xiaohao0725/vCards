@@ -24,9 +24,9 @@ _logger = LogSDK(
 )
 
 # 注入日志到 Radicale Application.__call__
-import radicale.application
+from radicale import application as radicale_app
 
-_orig_call = radicale.application.__call__
+_orig_call = radicale_app.__call__
 
 
 def _logged_call(environ, start_response):
@@ -90,5 +90,5 @@ def _logged_call(environ, start_response):
     _logger.send(entry)
 
 
-radicale.application.__call__ = _logged_call
+radicale_app.__call__ = _logged_call
 print("[logs-sdk] Radicale 日志采集已注入", flush=True)
