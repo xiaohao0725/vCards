@@ -1,8 +1,8 @@
 """Radicale WSGI 日志中间件 — 采集所有 CardDAV 请求"""
 
 import os, json, time
-from logs_sdk import LogSDK, new_uuid
-from logs_sdk.types import LogEntry, sanitize_headers
+from logs_sdk import LogSDK
+from logs_sdk.types import new_uuid, sanitize_headers, LogEntry
 
 logger = LogSDK(
     endpoint=os.environ.get(
