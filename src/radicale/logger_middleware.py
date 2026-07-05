@@ -25,6 +25,9 @@ class LogsMiddleware:
     def __init__(self, app):
         self.app = app
 
+    def __getattr__(self, name):
+        return getattr(self.app, name)
+
     def __call__(self, environ, start_response):
         entry_uuid = new_uuid()
         start_time = time.time()
