@@ -47,8 +47,8 @@ model Contact {
 }
 
 model ContactCategory {
-  contactId  Int
-  categoryId Int
+  contactId  Int      @map("contact_id")
+  categoryId Int      @map("category_id")
   contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
