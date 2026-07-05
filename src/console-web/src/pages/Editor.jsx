@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api'
+import CategorySelect from '../components/CategorySelect'
 
 const emptyPhone = { number: '', label: '' }
 const emptyEmail = { email: '', label: '' }
@@ -11,25 +12,20 @@ export default function Editor() {
   const navigate = useNavigate()
 
   const [organization, setOrganization] = useState('')
-  const [categoryId, setCategoryId] = useState('')
+  const [categoryIds, setCategoryIds] = useState([])
   const [url, setUrl] = useState('')
   const [imagePath, setImagePath] = useState('')
   const [phones, setPhones] = useState([{ ...emptyPhone }])
   const [emails, setEmails] = useState([{ ...emptyEmail }])
-  const [categories, setCategories] = useState([])
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    api.getCategories().then(setCategories)
-  }, [])
-
-  useEffect(() => {
     if (!id) return
     api.getContact(id).then((c) => {
       setOrganization(c.organization)
-      setCategoryId(c.categories?.[0]?.categoryId || '')
+      setCategoryIds(c.categories?.map(cc => cc.categoryId) || [])
       setUrl(c.url || '')
       setImagePath(c.imagePath || '')
       setPhones(c.phones.length ? c.phones : [{ ...emptyPhone }])
@@ -86,7 +82,7 @@ export default function Editor() {
 
     const data = {
       organization: organization.trim(),
-      categoryIds: categoryId ? [Number(categoryId)] : [],
+      categoryIds,
       url: url.trim() || null,
       imagePath: imagePath || null,
       phones: validPhones,
@@ -126,13 +122,12 @@ export default function Editor() {
 
         <div className="form-row">
           <div className="form-group">
-            <label>分类</label>
-            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">请选择</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+            <label>分类（可多选，支持子分类）</label>
+            <CategorySelect
+              value={categoryIds}
+              onChange={setCategoryIds}
+              placeholder="选择分类（支持多选）"
+            />
           </div>
           <div className="form-group">
             <label>网址</label>

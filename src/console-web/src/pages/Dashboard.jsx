@@ -9,15 +9,22 @@ export default function Dashboard() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState('')
+  const [includeChildren, setIncludeChildren] = useState(true)
   const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
+  const [categoryPaths, setCategoryPaths] = useState({})
   const navigate = useNavigate()
 
   const loadContacts = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.getContacts({ search, categoryId, status, page, pageSize: 20 })
+      const params = { search, status, page, pageSize: 20 }
+      if (categoryId) {
+        params.categoryId = categoryId
+        if (includeChildren) params.includeChildren = 'true'
+      }
+      const data = await api.getContacts(params)
       setContacts(data.contacts)
       setTotal(data.total)
     } catch (err) {
@@ -25,15 +32,25 @@ export default function Dashboard() {
     } finally {
       setLoading(false)
     }
-  }, [search, categoryId, status, page])
+  }, [search, categoryId, includeChildren, status, page])
 
   useEffect(() => {
-    api.getCategories().then(setCategories).catch(console.error)
+    api.getCategories().then((cats) => {
+      setCategories(cats)
+      const paths = {}
+      cats.forEach(c => { paths[c.id] = c.name })
+      setCategoryPaths(paths)
+    }).catch(console.error)
   }, [])
 
-  useEffect(() => {
-    loadContacts()
-  }, [loadContacts])
+  useEffect(() => { loadContacts() }, [loadContacts])
+
+  // 为每个联系人的分类补全路径
+  const getCategoryNames = (contact) => {
+    return contact.categories
+      ?.map(cc => cc.category?.name || categoryPaths[cc.categoryId] || cc.categoryId)
+      .filter(Boolean) || []
+  }
 
   const handlePublishAll = async () => {
     if (!window.confirm('确定将所有草稿标记为已发布？')) return
@@ -101,6 +118,16 @@ export default function Dashboard() {
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+          {categoryId && (
+            <label className="checkbox-label" style={{ fontSize: 13, color: '#666', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input
+                type="checkbox"
+                checked={includeChildren}
+                onChange={(e) => { setIncludeChildren(e.target.checked); setPage(1) }}
+              />
+              包含子分类
+            </label>
+          )}
           <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }}>
             <option value="">全部状态</option>
             <option value="draft">草稿</option>
@@ -150,7 +177,11 @@ export default function Dashboard() {
                       <span>{c.organization}</span>
                     </div>
                   </td>
-                  <td>{c.categories?.map(cc => cc.category?.name).filter(Boolean).join(', ') || '-'}</td>
+                  <td className="cat-cell">
+                    {getCategoryNames(c).map((name, i) => (
+                      <span key={i} className="cat-pill">{name}</span>
+                    )) || '-'}
+                  </td>
                   <td>{c.phones?.slice(0, 2).map(p => p.number).join(', ') || '-'}</td>
                   <td>
                     <span className={`status-badge status-${c.status}`}>
@@ -163,7 +194,7 @@ export default function Dashboard() {
                     <button onClick={() => handleToggleStatus(c)} className="btn-sm">
                       {c.status === 'published' ? '下架' : '发布'}
                     </button>
-                    <a href={api.getVcfDownloadUrl(c.id)} className="btn-sm" target="_blank">VCF</a>
+                    <a href={api.getVcfDownloadUrl(c.id)} className="btn-sm" target="_blank" rel="noopener">VCF</a>
                     <button onClick={() => handleDelete(c.id, c.organization)} className="btn-sm btn-danger">删除</button>
                   </td>
                 </tr>

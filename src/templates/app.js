@@ -1,326 +1,283 @@
-// 全局变量
-let vcardsData = [];
-let filteredData = [];
-let currentCategory = 'all';
+const API_BASE = '/console/api/public'
+let currentCategory = 'all'
+let currentPage = 1
+let totalPages = 1
+let isSearching = false
 
 // DOM 元素
-const vcardGrid = document.getElementById('vcard-grid');
-const searchInput = document.getElementById('search-input');
-const filterTabs = document.querySelector('.filter-tabs');
-const loading = document.getElementById('loading');
-const emptyState = document.getElementById('empty-state');
-const totalCountEl = document.getElementById('total-count');
-const categoryCountEl = document.getElementById('category-count');
+const vcardGrid = document.getElementById('vcard-grid')
+const searchInput = document.getElementById('search-input')
+const filterTabs = document.querySelector('.filter-tabs')
+const loading = document.getElementById('loading')
+const emptyState = document.getElementById('empty-state')
+const totalCountEl = document.getElementById('total-count')
+const categoryCountEl = document.getElementById('category-count')
+const loadMoreBtn = document.getElementById('load-more')
 
-// 弹框相关元素
-const modal = document.getElementById('download-modal');
-const modalIcon = document.getElementById('modal-icon');
-const modalTitle = document.getElementById('modal-title');
-const modalOrgName = document.getElementById('modal-org-name');
-const modalPhones = document.getElementById('modal-phones');
-const modalUrl = document.getElementById('modal-url');
-const modalEmails = document.getElementById('modal-emails');
-const confirmDownloadBtn = document.getElementById('confirm-download');
-const cancelDownloadBtn = document.getElementById('cancel-download');
-const closeBtn = document.querySelector('.close');
+// 弹框
+const modal = document.getElementById('download-modal')
+const modalIcon = document.getElementById('modal-icon')
+const modalTitle = document.getElementById('modal-title')
+const modalOrgName = document.getElementById('modal-org-name')
+const modalPhones = document.getElementById('modal-phones')
+const modalUrl = document.getElementById('modal-url')
+const modalEmails = document.getElementById('modal-emails')
+const confirmDownloadBtn = document.getElementById('confirm-download')
+const cancelDownloadBtn = document.getElementById('cancel-download')
+const closeBtn = document.querySelector('.close')
 
-// 当前选中的 vCard 数据
-let currentVCardData = null;
+let currentVCardData = null
 
-// 初始化
 document.addEventListener('DOMContentLoaded', function() {
-    loadVCardsData();
-    setupEventListeners();
-});
+  setupEventListeners()
+  loadCategories()
+  loadContacts()
+})
 
-// 设置事件监听器
 function setupEventListeners() {
-    // 搜索功能
-    searchInput.addEventListener('input', debounce(handleSearch, 300));
-    
-    // 弹框相关事件
-    confirmDownloadBtn.addEventListener('click', downloadVCard);
-    cancelDownloadBtn.addEventListener('click', closeModal);
-    closeBtn.addEventListener('click', closeModal);
-    
-    // 点击弹框外部关闭
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) {
-            closeModal();
-        }
-    });
-    
-    // 键盘事件
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            closeModal();
-        }
-    });
+  searchInput.addEventListener('input', debounce(handleSearch, 300))
+  confirmDownloadBtn.addEventListener('click', downloadVCard)
+  cancelDownloadBtn.addEventListener('click', closeModal)
+  closeBtn.addEventListener('click', closeModal)
+  modal.addEventListener('click', function(e) { if (e.target === modal) closeModal() })
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal() })
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener('click', loadMore)
+  }
 }
 
-// 加载 vCards 数据
-async function loadVCardsData() {
-    try {
-        // 这里的数据将在构建时注入
-        vcardsData = window.VCARDS_DATA || [];
-        
-        if (vcardsData.length === 0) {
-            showEmptyState();
-            return;
-        }
-        
-        filteredData = [...vcardsData];
-        
-        // 更新统计信息
-        updateStats();
-        
-        // 生成分类标签
-        generateCategoryTabs();
-        
-        // 渲染卡片
-        renderVCards();
-        
-        // 隐藏加载状态
-        loading.style.display = 'none';
-        
-    } catch (error) {
-        console.error('加载数据失败:', error);
-        showEmptyState();
-        loading.style.display = 'none';
+async function fetchJSON(url) {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+async function loadCategories() {
+  try {
+    const tree = await fetchJSON(`${API_BASE}/categories`)
+    filterTabs.querySelectorAll('.filter-tab[data-category]:not([data-category="all"])').forEach(t => t.remove())
+
+    const flatCats = flattenTree(tree)
+    categoryCountEl.textContent = flatCats.length
+
+    flatCats.forEach(cat => {
+      const tab = document.createElement('button')
+      tab.className = 'filter-tab'
+      tab.dataset.category = cat.id
+      tab.textContent = cat.name
+      tab.addEventListener('click', () => handleCategoryFilter(cat.id))
+      filterTabs.appendChild(tab)
+    })
+  } catch (err) {
+    console.error('加载分类失败:', err)
+  }
+}
+
+function flattenTree(nodes, depth = 0) {
+  const result = []
+  for (const node of nodes) {
+    result.push({ id: node.id, name: node.name, depth })
+    if (node.children?.length) {
+      result.push(...flattenTree(node.children, depth + 1))
     }
+  }
+  return result
 }
 
-// 更新统计信息
-function updateStats() {
-    const categories = [...new Set(vcardsData.map(item => item.category))];
-    totalCountEl.textContent = vcardsData.length;
-    categoryCountEl.textContent = categories.length;
-}
-
-// 生成分类标签
-function generateCategoryTabs() {
-    const categories = [...new Set(vcardsData.map(item => item.category))].sort();
-    
-    categories.forEach(category => {
-        const tab = document.createElement('button');
-        tab.className = 'filter-tab';
-        tab.dataset.category = category;
-        tab.textContent = category;
-        tab.addEventListener('click', () => handleCategoryFilter(category));
-        filterTabs.appendChild(tab);
-    });
-}
-
-// 处理分类过滤
-function handleCategoryFilter(category) {
-    currentCategory = category;
-    
-    // 更新标签状态
-    document.querySelectorAll('.filter-tab').forEach(tab => {
-        tab.classList.remove('active');
-    });
-    
-    const activeTab = category === 'all' 
-        ? document.querySelector('[data-category="all"]')
-        : document.querySelector(`[data-category="${category}"]`);
-    
-    if (activeTab) {
-        activeTab.classList.add('active');
+async function loadContacts(page = 1) {
+  loading.style.display = 'block'
+  try {
+    const params = new URLSearchParams({ page, pageSize: 20 })
+    if (currentCategory !== 'all') {
+      params.set('categoryId', currentCategory)
+      params.set('includeChildren', 'true')
     }
-    
-    // 重新过滤数据
-    filterData();
-}
-
-// 处理搜索
-function handleSearch() {
-    filterData();
-}
-
-// 过滤数据
-function filterData() {
-    const searchTerm = searchInput.value.toLowerCase().trim();
-    
-    filteredData = vcardsData.filter(item => {
-        const matchesCategory = currentCategory === 'all' || item.category === currentCategory;
-        const matchesSearch = !searchTerm || 
-            item.organization.toLowerCase().includes(searchTerm) ||
-            item.category.toLowerCase().includes(searchTerm) ||
-            (item.phones && item.phones.some(phone => phone.includes(searchTerm))) ||
-            (item.url && item.url.toLowerCase().includes(searchTerm));
-        
-        return matchesCategory && matchesSearch;
-    });
-    
-    renderVCards();
-}
-
-// 渲染 vCard 卡片
-function renderVCards() {
-    if (filteredData.length === 0) {
-        showEmptyState();
-        return;
+    if (searchInput.value.trim()) {
+      params.set('search', searchInput.value.trim())
     }
-    
-    hideEmptyState();
-    
-    vcardGrid.innerHTML = '';
-    
-    filteredData.forEach(vcard => {
-        const cardElement = createVCardElement(vcard);
-        vcardGrid.appendChild(cardElement);
-    });
+
+    const data = await fetchJSON(`${API_BASE}/contacts?${params}`)
+    totalCountEl.textContent = data.total
+
+    if (page === 1) {
+      vcardGrid.innerHTML = ''
+    }
+
+    data.contacts.forEach(card => createVCardElement(card))
+
+    currentPage = page
+    totalPages = Math.ceil(data.total / 20)
+
+    if (data.contacts.length === 0 && page === 1) {
+      showEmptyState()
+    } else {
+      hideEmptyState()
+    }
+
+    if (loadMoreBtn) {
+      loadMoreBtn.style.display = currentPage < totalPages ? 'block' : 'none'
+    }
+  } catch (err) {
+    console.error('加载联系人失败:', err)
+    if (page === 1) showEmptyState()
+  } finally {
+    loading.style.display = 'none'
+  }
 }
 
-// 创建 vCard 元素
 function createVCardElement(vcard) {
-    const cardDiv = document.createElement('div');
-    cardDiv.className = 'vcard-item';
-    cardDiv.addEventListener('click', () => showDownloadModal(vcard));
-    
-    const iconUrl = `./icons/${vcard.category}/${vcard.filename}.png`;
-    
-    cardDiv.innerHTML = `
-        <div class="vcard-header">
-            <img src="${iconUrl}" alt="${vcard.organization}" class="vcard-icon" 
-                 onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0iI0Y4RjlGQSIvPgo8cGF0aCBkPSJNMjQgMTJBNiA2IDAgMCAxIDMwIDE4QTYgNiAwIDAgMSAyNCAyNEE2IDYgMCAwIDEgMTggMThBNiA2IDAgMCAxIDI0IDEyWiIgZmlsbD0iIzY2NyIvPgo8cGF0aCBkPSJNMTIgMzZWMzRBNiA2IDAgMCAxIDE4IDI4SDMwQTYgNiAwIDAgMSAzNiAzNFYzNiIgZmlsbD0iIzY2NyIvPgo8L3N2Zz4K';">
-            <div>
-                <h3 class="vcard-title">${vcard.organization}</h3>
-                <span class="vcard-category">${vcard.category}</span>
-            </div>
+  const cardDiv = document.createElement('div')
+  cardDiv.className = 'vcard-item'
+  cardDiv.addEventListener('click', () => showDownloadModal(vcard))
+
+  const iconUrl = vcard.imagePath || `data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0iI0Y4RjlGQSIvPgo8cGF0aCBkPSJNMjQgMTJBNiA2IDAgMCAxIDMwIDE4QTYgNiAwIDAgMSAyNCAyNEE2IDYgMCAwIDEgMTggMThBNiA2IDAgMCAxIDI0IDEyWiIgZmlsbD0iIzY2NyIvPgo8cGF0aCBkPSJNMTIgMzZWMzRBNiA2IDAgMCAxIDE4IDI4SDMwQTYgNiAwIDAgMSAzNiAzNFYzNiIgZmlsbD0iIzY2NyIvPgo8L3N2Zz4K`
+  const orgName = vcard.organization
+
+  const catPath = vcard.categoryPaths?.length
+    ? vcard.categoryPaths.join(', ')
+    : ''
+
+  const phones = vcard.phones || []
+  const emails = vcard.emails || []
+
+  cardDiv.innerHTML = `
+    <div class="vcard-header">
+      <img src="${iconUrl}" alt="${orgName}" class="vcard-icon"
+           onerror="this.onerror=null;this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iOCIgZmlsbD0iI0Y4RjlGQSIvPgo8cGF0aCBkPSJNMjQgMTJBNiA2IDAgMCAxIDMwIDE4QTYgNiAwIDAgMSAyNCAyNEE2IDYgMCAwIDEgMTggMThBNiA2IDAgMCAxIDI0IDEyWiIgZmlsbD0iIzY2NyIvPgo8cGF0aCBkPSJNMTIgMzZWMzRBNiA2IDAgMCAxIDE4IDI4SDMwQTYgNiAwIDAgMSAzNiAzNFYzNiIgZmlsbD0iIzY2NyIvPgo8L3N2Zz4K'">
+      <div>
+        <h3 class="vcard-title">${orgName}</h3>
+        ${catPath ? `<span class="vcard-category">${catPath}</span>` : ''}
+      </div>
+    </div>
+    <div class="vcard-info">
+      ${phones.length > 0 ? `
+        <div class="vcard-phones">
+          ${phones.slice(0, 3).map(p => {
+            const label = p.label ? `(${p.label})` : ''
+            return `<span class="phone-item">${p.number} ${label}</span>`
+          }).join('')}
+          ${phones.length > 3 ? `<span class="phone-item">+${phones.length - 3}</span>` : ''}
         </div>
-        <div class="vcard-info">
-            ${vcard.phones && vcard.phones.length > 0 ? `
-                <div class="vcard-phones">
-                    ${vcard.phones.slice(0, 3).map(phone => `<span class="phone-item">${phone}</span>`).join('')}
-                    ${vcard.phones.length > 3 ? `<span class="phone-item">+${vcard.phones.length - 3}</span>` : ''}
-                </div>
-            ` : ''}
-            ${vcard.url ? `
-                <a href="${vcard.url}" class="vcard-url" onclick="event.stopPropagation();" target="_blank" rel="noopener">
-                    ${formatUrl(vcard.url)}
-                </a>
-            ` : ''}
-        </div>
-    `;
-    
-    return cardDiv;
+      ` : ''}
+      ${vcard.url ? `
+        <a href="${vcard.url}" class="vcard-url" onclick="event.stopPropagation();" target="_blank" rel="noopener">
+          ${formatUrl(vcard.url)}
+        </a>
+      ` : ''}
+    </div>
+  `
+
+  vcardGrid.appendChild(cardDiv)
+  return cardDiv
 }
 
-// 格式化 URL 显示
 function formatUrl(url) {
-    try {
-        const urlObj = new URL(url);
-        return urlObj.hostname.replace('www.', '');
-    } catch {
-        return url;
-    }
+  try {
+    const urlObj = new URL(url)
+    return urlObj.hostname.replace('www.', '')
+  } catch { return url }
 }
 
-// 显示下载弹框
+function handleCategoryFilter(categoryId) {
+  currentCategory = String(categoryId)
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'))
+
+  const activeTab = categoryId === 'all'
+    ? document.querySelector('[data-category="all"]')
+    : document.querySelector(`[data-category="${categoryId}"]`)
+  if (activeTab) activeTab.classList.add('active')
+
+  currentPage = 1
+  loadContacts(1)
+}
+
+function handleSearch() {
+  currentPage = 1
+  loadContacts(1)
+}
+
+function loadMore() {
+  loadContacts(currentPage + 1)
+}
+
 function showDownloadModal(vcard) {
-    currentVCardData = vcard;
-    
-    const iconUrl = `./icons/${vcard.category}/${vcard.filename}.png`;
-    modalIcon.src = iconUrl;
-    modalIcon.onerror = function() {
-        this.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTIiIGZpbGw9IiNGOEY5RkEiLz4KPHBhdGggZD0iTTMyIDE2QTggOCAwIDAgMSA0MCAyNEE4IDggMCAwIDEgMzIgMzJBOCA4IDAgMCAxIDI0IDI0QTggOCAwIDAgMSAzMiAxNloiIGZpbGw9IiM2NjciLz4KPHBhdGggZD0iTTE2IDQ4VjQ0QTggOCAwIDAgMSAyNCAzNkg0MEE4IDggMCAwIDEgNDggNDRWNDgiIGZpbGw9IiM2NjciLz4KPC9zdmc+Cg==';
-    };
-    
-    modalTitle.textContent = vcard.organization;
-    modalOrgName.textContent = vcard.organization;
-    
-    // 显示电话号码
-    if (vcard.phones && vcard.phones.length > 0) {
-        modalPhones.innerHTML = `
-            <strong>📞 电话号码：</strong>
-            ${vcard.phones.map(phone => `<span class="phone-item">${phone}</span>`).join('')}
-        `;
-        modalPhones.style.display = 'block';
-    } else {
-        modalPhones.style.display = 'none';
-    }
-    
-    // 显示网址
-    if (vcard.url) {
-        modalUrl.innerHTML = `
-            <strong>🌐 官方网站：</strong>
-            <a href="${vcard.url}" target="_blank" rel="noopener">${vcard.url}</a>
-        `;
-        modalUrl.style.display = 'block';
-    } else {
-        modalUrl.style.display = 'none';
-    }
-    
-    // 显示邮箱
-    if (vcard.emails && vcard.emails.length > 0) {
-        modalEmails.innerHTML = `
-            <strong>✉️ 邮箱地址：</strong>
-            ${vcard.emails.map(email => `<a href="mailto:${email}">${email}</a>`).join(', ')}
-        `;
-        modalEmails.style.display = 'block';
-    } else {
-        modalEmails.style.display = 'none';
-    }
-    
-    modal.style.display = 'block';
-    document.body.style.overflow = 'hidden';
+  currentVCardData = vcard
+
+  const iconUrl = vcard.imagePath || 'data:image/svg+xml;base64,...'
+  modalIcon.src = iconUrl
+  modalTitle.textContent = vcard.organization
+  modalOrgName.textContent = vcard.organization
+
+  if (vcard.phones?.length) {
+    modalPhones.innerHTML = `
+      <strong>📞 电话：</strong>
+      ${vcard.phones.map(p => {
+        const label = p.label ? ` <small style="color:#888">(${p.label})</small>` : ''
+        return `<span class="phone-item">${p.number}${label}</span>`
+      }).join('')}
+    `
+    modalPhones.style.display = 'block'
+  } else {
+    modalPhones.style.display = 'none'
+  }
+
+  if (vcard.url) {
+    modalUrl.innerHTML = `<strong>🌐 官网：</strong><a href="${vcard.url}" target="_blank">${vcard.url}</a>`
+    modalUrl.style.display = 'block'
+  } else {
+    modalUrl.style.display = 'none'
+  }
+
+  if (vcard.emails?.length) {
+    modalEmails.innerHTML = `
+      <strong>✉️ 邮箱：</strong>
+      ${vcard.emails.map(e => {
+        const label = e.label ? ` <small style="color:#888">(${e.label})</small>` : ''
+        return `<span class="phone-item">${e.email}${label}</span>`
+      }).join(', ')}
+    `
+    modalEmails.style.display = 'block'
+  } else {
+    modalEmails.style.display = 'none'
+  }
+
+  modal.style.display = 'block'
+  document.body.style.overflow = 'hidden'
 }
 
-// 关闭弹框
 function closeModal() {
-    modal.style.display = 'none';
-    document.body.style.overflow = 'auto';
-    currentVCardData = null;
+  modal.style.display = 'none'
+  document.body.style.overflow = 'auto'
+  currentVCardData = null
 }
 
-// 下载 VCF 文件
 function downloadVCard() {
-    if (!currentVCardData) return;
-    
-    const vcfUrl = `./vcf/${currentVCardData.category}/${currentVCardData.filename}.vcf`;
-    
-    // 创建下载链接
-    const link = document.createElement('a');
-    link.href = vcfUrl;
-    link.download = `${currentVCardData.organization}.vcf`;
-    link.style.display = 'none';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    closeModal();
+  if (!currentVCardData) return
+  const url = `/console/api/vcf/download/${currentVCardData.id}`
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${currentVCardData.organization}.vcf`
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  closeModal()
 }
 
-// 显示空状态
 function showEmptyState() {
-    vcardGrid.style.display = 'none';
-    emptyState.style.display = 'block';
+  vcardGrid.style.display = 'none'
+  emptyState.style.display = 'block'
 }
 
-// 隐藏空状态
 function hideEmptyState() {
-    vcardGrid.style.display = 'grid';
-    emptyState.style.display = 'none';
+  vcardGrid.style.display = 'grid'
+  emptyState.style.display = 'none'
 }
 
-// 防抖函数
 function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
+  let timeout
+  return function(...args) {
+    clearTimeout(timeout)
+    timeout = setTimeout(() => func.apply(this, args), wait)
+  }
 }
-
-// 当页面加载完成后，如果没有数据则显示占位信息
-window.addEventListener('load', function() {
-    if (!window.VCARDS_DATA || window.VCARDS_DATA.length === 0) {
-        console.warn('vCards 数据未找到，请确保正确构建了项目');
-    }
-});

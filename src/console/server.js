@@ -9,6 +9,8 @@ import contactsRoutes from './routes/contacts.js'
 import categoriesRoutes from './routes/categories.js'
 import vcfRoutes from './routes/vcf.js'
 import uploadRoutes from './routes/upload.js'
+import publicRoutes from './routes/public.js'
+import { logsPlugin } from './services/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -24,11 +26,14 @@ async function buildServer() {
   const publicDir = path.resolve(__dirname, '../../public/console')
   await server.register(staticFiles, { root: publicDir, prefix: '/console/' })
 
+  await server.register(logsPlugin)
+
   await server.register(authRoutes, { prefix: '/console/api/auth' })
   await server.register(contactsRoutes, { prefix: '/console/api' })
   await server.register(categoriesRoutes, { prefix: '/console/api' })
   await server.register(vcfRoutes, { prefix: '/console/api' })
   await server.register(uploadRoutes, { prefix: '/console/api' })
+  await server.register(publicRoutes, { prefix: '/console/api' })
 
   server.setNotFoundHandler((request, reply) => {
     if (request.url.startsWith('/console/api/')) {

@@ -257,8 +257,22 @@ export default async function vcfRoutes(fastify) {
       }
     }
 
-    // 为那些前端指定了 _categoryName 但不在 newCategories 中的分类也自动创建
+    // 自动创建前端指定 _categoryNames 中的新分类
     for (const c of importedContacts) {
+      if (c._categoryNames?.length) {
+        for (const catName of c._categoryNames) {
+          if (catName && !createdCats[catName]) {
+            const existing = await prisma.category.findUnique({ where: { name: catName } })
+            if (!existing) {
+              const cat = await prisma.category.create({
+                data: { name: catName, sortOrder: 999 }
+              })
+              createdCats[catName] = cat.id
+            }
+          }
+        }
+      }
+      // 兼容旧的 _categoryName 单值
       if (c._categoryName && !createdCats[c._categoryName]) {
         const existing = await prisma.category.findUnique({ where: { name: c._categoryName } })
         if (!existing) {
@@ -300,11 +314,26 @@ export default async function vcfRoutes(fastify) {
         categoryIds.push(...c._resolvedCategoryIds)
       }
 
-      // 前端传入的分类
+      // 前端传入的分类（多选数组）
+      if (c._categoryIds?.length) {
+        c._categoryIds.forEach(id => {
+          const nid = Number(id)
+          if (nid && !categoryIds.includes(nid)) categoryIds.push(nid)
+        })
+      }
+      // 兼容旧 _categoryId 单值
       if (c._categoryId) {
         const id = Number(c._categoryId)
-        if (!categoryIds.includes(id)) categoryIds.push(id)
+        if (id && !categoryIds.includes(id)) categoryIds.push(id)
       }
+      // 前端传入的待创建分类名
+      if (c._categoryNames?.length) {
+        c._categoryNames.forEach(name => {
+          const id = catNameToId[name] || createdCats[name]
+          if (id && !categoryIds.includes(id)) categoryIds.push(id)
+        })
+      }
+      // 兼容旧 _categoryName 单值
       if (c._categoryName) {
         const id = catNameToId[c._categoryName] || createdCats[c._categoryName]
         if (id && !categoryIds.includes(id)) categoryIds.push(id)

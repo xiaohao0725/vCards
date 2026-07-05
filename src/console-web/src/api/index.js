@@ -54,10 +54,17 @@ export const api = {
   deleteContact: (id) =>
     request(`/contacts/${id}`, { method: 'DELETE' }),
 
-  getCategories: () => request('/categories'),
+  getCategories: (params = {}) => {
+    const qs = new URLSearchParams(params).toString()
+    return request(`/categories${qs ? '?' + qs : ''}`)
+  },
 
-  createCategory: (name) =>
-    request('/categories', { method: 'POST', body: JSON.stringify({ name }) }),
+  getCategoryTree: () => request('/categories?tree=true'),
+
+  getCategoryPath: (id) => request(`/categories/${id}/path`),
+
+  createCategory: (name, parentId) =>
+    request('/categories', { method: 'POST', body: JSON.stringify({ name, parentId }) }),
 
   updateCategory: (id, data) =>
     request(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

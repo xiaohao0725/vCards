@@ -203,6 +203,9 @@ jobs:
             -e QINIU_IMAGE_DOMAIN="${{ secrets.QINIU_IMAGE_DOMAIN }}" \
             -e QINIU_FILE_DOMAIN="${{ secrets.QINIU_FILE_DOMAIN }}" \
             -e VCF_OUTPUT_DIR=/app/vcards-data \
+            -e LOGS_ENDPOINT="${{ secrets.LOGS_ENDPOINT }}" \
+            -e LOGS_API_KEY="${{ secrets.LOGS_API_KEY }}" \
+            -e LOGS_API_SECRET="${{ secrets.LOGS_API_SECRET }}" \
             -e TZ=${TZ} \
             vcards-console:latest
 

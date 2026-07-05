@@ -12,22 +12,35 @@ export default function Import() {
   const [showUnknownDialog, setShowUnknownDialog] = useState(false)
   const [unknownChecks, setUnknownChecks] = useState({})
   const [importResult, setImportResult] = useState(null)
-  // 每个联系人的分类选择: { [index]: categoryId | "new:XXX" | "" (不设分类) }
+  // 每个联系人的分类选择: { [index]: string[] } 支持多分类
   const [contactSelections, setContactSelections] = useState({})
   const [selectedContacts, setSelectedContacts] = useState(new Set())
   const [batchCategory, setBatchCategory] = useState('')
+  const [expandedRow, setExpandedRow] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => { api.getCategories().then(setCategories) }, [])
 
-  const resolveCategoryId = (parsedCats, existingCats) => {
-    if (!parsedCats?.length) return ''
+  const resolveCategoryIds = (parsedCats, existingCats) => {
+    if (!parsedCats?.length) return []
+    const ids = []
     for (const name of parsedCats) {
       const found = existingCats.find(c => c.name === name)
-      if (found) return String(found.id)
+      if (found) ids.push(String(found.id))
+      else ids.push(`new:${name}`)
     }
-    // 全部是未知分类
-    return `new:${parsedCats[0]}`
+    return ids
+  }
+
+  const resolveCategoryPaths = (parsedPaths, existingCats) => {
+    if (!parsedPaths?.length) return []
+    // categoryPaths 是完整路径如 "本地生活»广东»深圳"
+    // 尝试通过路径最后一个名称匹配分类
+    return parsedPaths.map(p => {
+      const leaf = p.split('»').pop().trim()
+      const found = existingCats.find(c => c.name === leaf)
+      return found ? String(found.id) : `new:${leaf}`
+    })
   }
 
   const handleFileChange = (e) => {
@@ -51,7 +64,11 @@ export default function Import() {
       // 为每个联系人计算初始分类选择
       const selections = {}
       result.contacts.forEach((c, i) => {
-        selections[i] = resolveCategoryId(c.categories, result.existingCategories || [])
+        // 优先用 categoryPaths 匹配
+        const pathIds = resolveCategoryPaths(c.categoryPaths || [], result.existingCategories || [])
+        const catIds = resolveCategoryIds(c.categories || [], result.existingCategories || [])
+        const merged = [...new Set([...pathIds, ...catIds])]
+        selections[i] = merged
       })
       setContactSelections(selections)
 
@@ -72,26 +89,31 @@ export default function Import() {
 
   const handleUnknownConfirm = () => {
     setShowUnknownDialog(false)
-    // 对于未勾选的未知分类，将对应联系人的选择改为空
     const updated = { ...contactSelections }
     const uncheckedCats = Object.entries(unknownChecks)
       .filter(([, checked]) => !checked)
       .map(([name]) => name)
     if (uncheckedCats.length > 0) {
-      Object.entries(updated).forEach(([i, val]) => {
-        if (typeof val === 'string' && val.startsWith('new:')) {
-          const catName = val.slice(4)
-          if (uncheckedCats.includes(catName)) {
-            updated[i] = ''
+      Object.entries(updated).forEach(([i, vals]) => {
+        updated[i] = vals.filter(val => {
+          if (val.startsWith('new:')) {
+            return !uncheckedCats.includes(val.slice(4))
           }
-        }
+          return true
+        })
       })
     }
     setContactSelections(updated)
   }
 
-  const handleContactCategoryChange = (index, value) => {
-    setContactSelections(prev => ({ ...prev, [index]: value }))
+  const toggleCategory = (index, value) => {
+    setContactSelections(prev => {
+      const cur = prev[index] || []
+      const next = cur.includes(value)
+        ? cur.filter(v => v !== value)
+        : [...cur, value]
+      return { ...prev, [index]: next }
+    })
   }
 
   const toggleSelect = (index) => {
@@ -113,10 +135,16 @@ export default function Import() {
 
   const handleBatchCategory = () => {
     if (!batchCategory || !parsed) return
-    const count = selectedContacts.size
     setContactSelections(prev => {
       const updated = { ...prev }
-      selectedContacts.forEach(i => { updated[i] = batchCategory })
+      selectedContacts.forEach(i => {
+        const cur = updated[i] || []
+        if (batchCategory === 'clear') {
+          updated[i] = []
+        } else if (!cur.includes(batchCategory)) {
+          updated[i] = [...cur, batchCategory]
+        }
+      })
       return updated
     })
     setSelectedContacts(new Set())
@@ -132,17 +160,17 @@ export default function Import() {
         .filter(([, checked]) => checked)
         .map(([name]) => name)
 
-      // 为每个联系人附加独立分类信息
       const contactsWithCategory = parsed.contacts.map((c, i) => {
-        const sel = contactSelections[i] || ''
-        const catId = sel.startsWith('new:') ? null : (sel ? Number(sel) : null)
-        const catName = sel.startsWith('new:') ? sel.slice(4) : null
-        return { ...c, _categoryId: catId, _categoryName: catName }
+        const sels = contactSelections[i] || []
+        const catIds = sels.filter(s => !s.startsWith('new:')).map(Number)
+        const newNames = sels.filter(s => s.startsWith('new:')).map(s => s.slice(4))
+        return { ...c, _categoryIds: catIds, _categoryNames: newNames }
       })
 
       const result = await api.saveImport(contactsWithCategory, newCats)
       setImportResult({
         count: result.count,
+        total: importResult?.total,
         newCategoriesCreated: result.newCategoriesCreated || []
       })
     } catch (err) {
@@ -152,26 +180,27 @@ export default function Import() {
     }
   }
 
-  const getCategoryLabel = (val, cats) => {
-    if (!val) return '不设分类'
-    if (val.startsWith('new:')) {
-      const name = val.slice(4)
-      const checked = unknownChecks[name] !== false
-      return checked ? `新建:${name}` : '不设分类（未创建）'
-    }
-    const cat = cats.find(c => String(c.id) === val)
-    return cat?.name || '未知'
+  const getCategoryLabel = (vals, cats) => {
+    if (!vals?.length) return '不设分类'
+    return vals.map(val => {
+      if (val.startsWith('new:')) {
+        const name = val.slice(4)
+        return unknownChecks[name] !== false ? `新建:${name}` : null
+      }
+      const cat = cats.find(c => String(c.id) === val)
+      return cat?.name || null
+    }).filter(Boolean).join(', ') || '不设分类'
   }
 
-  const getCategoryStyle = (val) => {
-    if (!val) return {}
-    if (val.startsWith('new:')) {
-      const name = val.slice(4)
-      return unknownChecks[name] !== false
-        ? { color: '#388e3c', fontWeight: 600 }
-        : { color: '#999' }
-    }
-    return {}
+  const getSelectionSummary = (index) => {
+    const vals = contactSelections[index] || []
+    if (!vals.length) return '不设分类'
+    const names = vals.map(v => {
+      if (v.startsWith('new:')) return `+${v.slice(4)}`
+      const cat = categories.find(c => String(c.id) === v)
+      return cat?.name || v
+    })
+    return `${names.length} 个: ${names.join(', ')}`
   }
 
   return (
@@ -255,11 +284,11 @@ export default function Import() {
                 onChange={(e) => setBatchCategory(e.target.value)}
                 style={{ padding: '6px 10px', border: '1px solid #ddd', borderRadius: 4, fontSize: 13 }}
               >
-                <option value="">批量设置分类...</option>
+                <option value="">批量追加分类...</option>
                 {categories.map((cat) => (
                   <option key={cat.id} value={String(cat.id)}>{cat.name}</option>
                 ))}
-                <option value="">不设分类</option>
+                <option value="clear">--- 清空分类 ---</option>
               </select>
               <button onClick={handleBatchCategory} disabled={!batchCategory} className="btn-sm" style={{ background: '#667eea', color: 'white', border: 'none' }}>
                 应用
@@ -329,33 +358,56 @@ export default function Import() {
                     <td style={{ fontSize: 12 }}>
                       {c.url ? <a href={c.url} target="_blank" rel="noopener" style={{ color: '#667eea' }}>{new URL(c.url).hostname}</a> : '-'}
                     </td>
-                    <td>
-                      <select
-                        value={contactSelections[i] || ''}
-                        onChange={(e) => handleContactCategoryChange(i, e.target.value)}
-                        style={{ ...getCategoryStyle(contactSelections[i] || ''), width: '100%', fontSize: 12, padding: '4px 6px', border: '1px solid #ddd', borderRadius: 4 }}
-                      >
-                        <option value="">不设分类</option>
-                        {categories.filter(cat => {
-                          // 排除已选为 "new:" 的未知分类
-                          return true
-                        }).map((cat) => (
-                          <option key={cat.id} value={String(cat.id)}>{cat.name}</option>
-                        ))}
-                        {/* 未知分类选项 */}
-                        {c.categories?.map((catName) => {
-                          const exists = categories.some(dc => dc.name === catName)
-                          if (!exists) {
-                            return (
-                              <option key={`new-${catName}`} value={`new:${catName}`}>
-                                新建: {catName}
-                              </option>
-                            )
-                          }
-                          return null
-                        })}
-                      </select>
-                    </td>
+                      <td className="cat-cell-import" style={{ cursor: 'pointer', position: 'relative' }}>
+                        <div
+                          onClick={() => setExpandedRow(expandedRow === i ? null : i)}
+                          style={{ fontSize: 12, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {getSelectionSummary(i)}
+                        </div>
+                        {expandedRow === i && (
+                          <div className="cat-import-dropdown" onClick={(e) => e.stopPropagation()}>
+                            {categories.map((cat) => {
+                              const checked = (contactSelections[i] || []).includes(String(cat.id))
+                              return (
+                                <label key={cat.id} className="cat-select-item" style={{ paddingLeft: 12 }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleCategory(i, String(cat.id))}
+                                  />
+                                  <span>{cat.name}</span>
+                                </label>
+                              )
+                            })}
+                            {/* 未知分类选项 */}
+                            {parsed.contacts[i].categories?.map((catName) => {
+                              const exists = categories.some(dc => dc.name === catName)
+                              if (!exists) {
+                                const checked = (contactSelections[i] || []).includes(`new:${catName}`)
+                                return (
+                                  <label key={`new-${catName}`} className="cat-select-item" style={{ paddingLeft: 12, color: '#388e3c' }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => toggleCategory(i, `new:${catName}`)}
+                                    />
+                                    <span>新建: {catName}</span>
+                                  </label>
+                                )
+                              }
+                              return null
+                            })}
+                            <button
+                              onClick={() => setExpandedRow(null)}
+                              className="btn-sm"
+                              style={{ width: '100%', marginTop: 4 }}
+                            >
+                              关闭
+                            </button>
+                          </div>
+                        )}
+                      </td>
                   </tr>
                 ))}
               </tbody>

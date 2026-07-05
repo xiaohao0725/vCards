@@ -1,6 +1,6 @@
 FROM node:alpine
-COPY . /app
 WORKDIR /app
-RUN npm install && npm run build:web
+COPY src/templates/ ./public/
+COPY src/serve.js ./serve.js
 EXPOSE 3000
-CMD ["node", "src/serve.js"]
+CMD ["node", "serve.js"]

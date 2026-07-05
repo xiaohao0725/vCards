@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { api } from '../api'
+import CategoryTree from '../components/CategoryTree'
 
 export default function Categories() {
-  const [categories, setCategories] = useState([])
+  const [tree, setTree] = useState([])
+  const [flatList, setFlatList] = useState([])
   const [loading, setLoading] = useState(true)
   const [newName, setNewName] = useState('')
+  const [newParentId, setNewParentId] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
@@ -14,27 +17,32 @@ export default function Categories() {
   const load = async () => {
     setLoading(true)
     try {
-      const data = await api.getCategories()
-      setCategories(data)
+      const [treeData, flatData] = await Promise.all([
+        api.getCategoryTree(),
+        api.getCategories()
+      ])
+      setTree(treeData)
+      setFlatList(flatData)
     } catch (err) { setError(err.message) }
     finally { setLoading(false) }
   }
 
   useEffect(() => { load() }, [])
 
-  const handleCreate = async (e) => {
+  const handleCreate = async (e, parentId) => {
     e.preventDefault()
     if (!newName.trim()) return
     try {
-      await api.createCategory(newName.trim())
+      await api.createCategory(newName.trim(), parentId || null)
       setNewName('')
+      setNewParentId('')
       load()
     } catch (err) { setError(err.message) }
   }
 
-  const handleEdit = (cat) => {
-    setEditingId(cat.id)
-    setEditName(cat.name)
+  const handleStartEdit = (name, id) => {
+    setEditingId(id)
+    setEditName(name)
   }
 
   const handleSaveEdit = async (id) => {
@@ -42,8 +50,19 @@ export default function Categories() {
     try {
       await api.updateCategory(id, { name: editName.trim() })
       setEditingId(null)
+      setEditName('')
       load()
     } catch (err) { setError(err.message) }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setEditName('')
+  }
+
+  const handleOpenChildCreate = (parentId) => {
+    setNewParentId(parentId)
+    document.getElementById('cat-new-name')?.focus()
   }
 
   const handleDelete = async () => {
@@ -56,92 +75,68 @@ export default function Categories() {
     } catch (err) { setError(err.message) }
   }
 
-  const openDelete = (cat) => {
-    setDeleteTarget(cat)
-    setMigrateTo('')
-    setError('')
-  }
-
   if (loading) return <div className="loading">加载中...</div>
 
   return (
     <div className="editor">
-      <h2>分类管理</h2>
+      <h2>分类管理（支持多级树形）</h2>
 
       {error && <div className="error-msg">{error}</div>}
 
-      <form onSubmit={handleCreate} className="array-row" style={{ marginBottom: 20 }}>
+      {/* 新建根分类 */}
+      <form onSubmit={(e) => handleCreate(e, null)} className="cat-create-form" style={{ marginBottom: 16 }}>
         <input
-          type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
-          placeholder="新分类名称" style={{ flex: 2 }}
+          id="cat-new-name"
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          placeholder={newParentId ? `为「${flatList.find(c => c.id === Number(newParentId))?.name || ''}」添加子分类` : '新分类名称'}
+          style={{ width: 260 }}
         />
-        <button type="submit" className="btn-primary">添加</button>
+        <button type="submit" className="btn-primary" style={{ marginLeft: 8 }}>添加</button>
+        {newParentId && (
+          <button type="button" onClick={() => setNewParentId('')} className="btn-sm" style={{ marginLeft: 8 }}>取消子分类→添加根分类</button>
+        )}
       </form>
 
-      <table className="contact-table">
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>联系人数量</th>
-            <th>排序</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {categories.map((c) => (
-            <tr key={c.id}>
-              <td>
-                {editingId === c.id ? (
-                  <input
-                    type="text" value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit(c.id)}
-                    autoFocus
-                    style={{ width: '100%' }}
-                  />
-                ) : (
-                  c.name
-                )}
-              </td>
-              <td>{c._count?.contacts ?? 0}</td>
-              <td>{c.sortOrder}</td>
-              <td className="actions">
-                {editingId === c.id ? (
-                  <>
-                    <button onClick={() => handleSaveEdit(c.id)} className="btn-sm">保存</button>
-                    <button onClick={() => setEditingId(null)} className="btn-sm">取消</button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => handleEdit(c)} className="btn-sm">编辑</button>
-                    <button onClick={() => openDelete(c)} className="btn-sm btn-danger">删除</button>
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-          {categories.length === 0 && (
-            <tr><td colSpan={4} className="empty-row">暂无分类</td></tr>
-          )}
-        </tbody>
-      </table>
+      <div className="cat-tree-container">
+        <div className="cat-tree-header">
+          <span className="cat-tree-th" style={{ flex: 2 }}>分类名称</span>
+          <span className="cat-tree-th" style={{ flex: 1 }}>统计</span>
+          <span className="cat-tree-th" style={{ width: 150 }}>操作</span>
+        </div>
 
-      {/* 删除迁移弹窗 */}
+        {tree.length > 0 ? (
+          <CategoryTree
+            nodes={tree}
+            editingId={editingId}
+            editName={editName}
+            onEdit={handleStartEdit}
+            onSave={handleSaveEdit}
+            onCancel={handleCancelEdit}
+            onDelete={(cat) => setDeleteTarget(cat)}
+            onCreateChild={handleOpenChildCreate}
+          />
+        ) : (
+          <div className="loading" style={{ padding: 20 }}>暂无分类，请添加</div>
+        )}
+      </div>
+
+      {/* 删除弹窗 */}
       {deleteTarget && (
         <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
             <h3>删除分类「{deleteTarget.name}」</h3>
+            {deleteTarget._count?.children > 0 && (
+              <p style={{ color: '#e67e22' }}>该分类下有 <strong>{deleteTarget._count.children}</strong> 个子分类，将自动提升到上级。</p>
+            )}
             {deleteTarget._count?.contacts > 0 ? (
               <>
                 <p>该分类下有 <strong>{deleteTarget._count.contacts}</strong> 个联系人，请选择迁移目标：</p>
-                <select
-                  value={migrateTo}
-                  onChange={(e) => setMigrateTo(e.target.value)}
-                  style={{ width: '100%', margin: '12px 0' }}
-                >
+                <select value={migrateTo} onChange={(e) => setMigrateTo(e.target.value)} style={{ width: '100%', margin: '12px 0' }}>
                   <option value="">请选择目标分类</option>
-                  {categories.filter(c => c.id !== deleteTarget.id).map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}（{c._count?.contacts ?? 0}）</option>
+                  {flatList.filter(c => c.id !== deleteTarget.id).map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
                 <div className="form-actions">
@@ -151,7 +146,7 @@ export default function Categories() {
               </>
             ) : (
               <>
-                <p>该分类下没有联系人，可以直接删除。</p>
+                <p>该分类下没有联系人，可直接删除。</p>
                 <div className="form-actions">
                   <button onClick={handleDelete} className="btn-danger">确认删除</button>
                   <button onClick={() => setDeleteTarget(null)} className="btn-secondary">取消</button>
