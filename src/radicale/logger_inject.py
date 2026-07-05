@@ -1,15 +1,10 @@
-"""Radicale 启动入口 — 带日志中间件"""
+"""Radicale 日志启动注入 — 通过 PYTHONSTARTUP 加载"""
 
-import os, json, time, sys
+import os, json, time
 
-os.environ["RADICALE_CONFIG"] = "/etc/radicale/config"
-
-# 先读取配置
-from radicale import config as radicale_config
-
-configuration = radicale_config.load()
-hosts = configuration.get("server", "hosts")
-print(f"[logs-sdk] Config hosts: {hosts}")
+os.environ["RADICALE_CONFIG"] = os.environ.get(
+    "RADICALE_CONFIG", "/etc/radicale/config"
+)
 
 from logs_sdk import LogSDK
 from logs_sdk.types import new_uuid, sanitize_headers, LogEntry
@@ -28,13 +23,13 @@ _logger = LogSDK(
     max_body_size=2048,
 )
 
-# 注入日志到 Application
-import radicale.server
+# 注入日志到 Radicale Application.__call__
+import radicale.application
 
-_orig_call = radicale.server.Application.__call__
+_orig_call = radicale.application.__call__
 
 
-def _logged_call(self, environ, start_response):
+def _logged_call(environ, start_response):
     entry_uuid = new_uuid()
     start_time = time.time()
     status_code = [200]
@@ -46,7 +41,7 @@ def _logged_call(self, environ, start_response):
         return start_response(status, headers, exc_info)
 
     try:
-        for chunk in _orig_call(self, environ, _start_response):
+        for chunk in _orig_call(environ, _start_response):
             yield chunk
     except Exception:
         status_code[0] = 500
@@ -95,18 +90,5 @@ def _logged_call(self, environ, start_response):
     _logger.send(entry)
 
 
-radicale.server.Application.__call__ = _logged_call
-
-# 启动
-from radicale import VERSION
-from radicale.server import serve
-
-print(f"[logs-sdk] Radicale v{VERSION} + logs-sdk 启动")
-
-try:
-    serve(configuration)
-except KeyboardInterrupt:
-    pass
-finally:
-    _logger.close()
-    print("[logs-sdk] 已关闭")
+radicale.application.__call__ = _logged_call
+print("[logs-sdk] Radicale 日志采集已注入", flush=True)

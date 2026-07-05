@@ -22,7 +22,7 @@ RUN apk add --no-cache \
   \
   && { \
     echo '[server]'; \
-    echo 'hosts = 0.0.0.0:5232'; \
+    echo 'hosts = 0.0.0.0:5232, [::]:5232'; \
     echo; \
     echo '[auth]'; \
     echo 'type = http_x_remote_user'; \
@@ -41,6 +41,8 @@ RUN apk add --no-cache \
 
 COPY src/radicale/ /app/radicale/
 
+ENV PYTHONSTARTUP=/app/radicale/logger_inject.py
+
 EXPOSE 5232
 
-CMD ["python3", "/app/radicale/start.py"]
+CMD ["radicale"]
