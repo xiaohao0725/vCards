@@ -29,7 +29,7 @@ export default function Editor() {
     if (!id) return
     api.getContact(id).then((c) => {
       setOrganization(c.organization)
-      setCategoryId(c.categoryId || '')
+      setCategoryId(c.categories?.[0]?.categoryId || '')
       setUrl(c.url || '')
       setImagePath(c.imagePath || '')
       setPhones(c.phones.length ? c.phones : [{ ...emptyPhone }])
@@ -86,7 +86,7 @@ export default function Editor() {
 
     const data = {
       organization: organization.trim(),
-      categoryId: categoryId || null,
+      categoryIds: categoryId ? [Number(categoryId)] : [],
       url: url.trim() || null,
       imagePath: imagePath || null,
       phones: validPhones,
