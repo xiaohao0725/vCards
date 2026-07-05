@@ -26,7 +26,7 @@ async function buildServer() {
   const publicDir = path.resolve(__dirname, '../../public/console')
   await server.register(staticFiles, { root: publicDir, prefix: '/console/' })
 
-  await server.register(logsPlugin)
+  await logsPlugin(server)
 
   await server.register(authRoutes, { prefix: '/console/api/auth' })
   await server.register(contactsRoutes, { prefix: '/console/api' })
