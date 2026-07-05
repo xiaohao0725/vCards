@@ -147,7 +147,7 @@ export default async function categoriesRoutes(fastify) {
     const category = await prisma.category.create({
       data: {
         name: nameTrimmed,
-        parentId: parentId !== undefined ? Number(parentId) : null,
+        parentId: parentId != null ? Number(parentId) : null,
         sortOrder: sortOrder ?? 999
       },
       include: { _count: { select: { contacts: true } } }

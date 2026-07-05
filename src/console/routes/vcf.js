@@ -428,7 +428,7 @@ export default async function vcfRoutes(fastify) {
     if (!contact) return reply.code(404).send({ error: '联系人不存在' })
 
     contact._categoryPaths = await getCategoryPaths(contact)
-    const vcfString = generateVcfFromContact(contact)
+    const vcfString = await generateVcfFromContact(contact)
     const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
 
     reply.header('Content-Type', 'text/vcard; charset=utf-8')
@@ -455,9 +455,10 @@ export default async function vcfRoutes(fastify) {
       c._categoryPaths = await getCategoryPaths(c)
     }
 
-    const allVcf = publishedContacts
-      .map(c => generateVcfFromContact(c))
-      .join('\n')
+    const vcfArray = await Promise.all(
+      publishedContacts.map(c => generateVcfFromContact(c))
+    )
+    const allVcf = vcfArray.join('\n')
 
     reply.header('Content-Type', 'text/vcard; charset=utf-8')
     reply.header('Content-Disposition', 'attachment; filename="vcards_all.vcf"')

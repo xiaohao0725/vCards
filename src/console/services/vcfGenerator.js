@@ -73,11 +73,32 @@ export async function getCategoryPaths(contact) {
   return paths
 }
 
-export function generateVcfFromContact(contact) {
+export async function generateVcfFromContact(contact) {
   const vCard = vCardsJS()
 
   vCard.isOrganization = true
   vCard.organization = contact.organization
+
+  // 嵌入 PHOTO 图片
+  if (contact.imagePath) {
+    try {
+      const response = await fetch(contact.imagePath)
+      if (response.ok) {
+        const buffer = await response.arrayBuffer()
+        const urlLower = contact.imagePath.toLowerCase()
+        let mimeType = 'image/png'
+        if (urlLower.endsWith('.jpg') || urlLower.endsWith('.jpeg')) {
+          mimeType = 'image/jpeg'
+        } else if (urlLower.endsWith('.gif')) {
+          mimeType = 'image/gif'
+        }
+        const base64 = Buffer.from(buffer).toString('base64')
+        vCard.photo.embedFromString(base64, mimeType)
+      }
+    } catch {
+      // 图片下载失败，静默跳过
+    }
+  }
 
   if (contact.phones && contact.phones.length > 0) {
     if (!Array.isArray(vCard.cellPhone)) vCard.cellPhone = []
@@ -104,6 +125,14 @@ export function generateVcfFromContact(contact) {
   vCard.uid = contact.id ? `vcards-cn-${contact.id}` : `vcards-cn-${Date.now()}`
 
   let formatted = vCard.getFormattedString()
+
+  // 修复 FN 字段为空问题
+  if (!formatted.match(/\nFN[^:\n]*:[^\r\n]*\S/)) {
+    formatted = formatted.replace(
+      /(FN[^:\r\n]*:)/,
+      `$1${contact.organization}`
+    )
+  }
 
   // 添加分类路径（多对多，逗号分隔）
   if (contact._categoryPaths?.length) {
@@ -163,11 +192,14 @@ export function generateVcfFromContact(contact) {
     }
   }
 
+  // 统一换行符为 CRLF（RFC 2426 规范要求）
+  formatted = formatted.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+
   return formatted
 }
 
 export async function generateAllVcfFiles(contacts, silent = false) {
-  // 清空旧 vcf 文件
+  // 清空根目录旧 vcf 文件
   if (fs.existsSync(VCF_OUTPUT_DIR)) {
     const oldFiles = fs.readdirSync(VCF_OUTPUT_DIR)
     for (const file of oldFiles) {
@@ -186,15 +218,33 @@ export async function generateAllVcfFiles(contacts, silent = false) {
 
   const results = []
   const allVcfLines = []
+  // 分类名 → 联系人列表
+  const catMap = new Map()
+  // 缓存：联系人的 vcf 文件名（避免重复计算 sanitizedName）
+  const contactFileNames = new Map()
 
   for (const contact of contacts) {
     try {
-      const vcfString = generateVcfFromContact(contact)
+      const vcfString = await generateVcfFromContact(contact)
       const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
       const fileName = `${sanitizedName}.vcf`
       const filePath = path.join(VCF_OUTPUT_DIR, fileName)
       fs.writeFileSync(filePath, vcfString, 'utf-8')
       allVcfLines.push(vcfString)
+      // 缓存用于分类目录写入
+      contact._vcfString = vcfString
+      contactFileNames.set(contact.id, fileName)
+      // 收集分类归属
+      const cats = contact.categories || []
+      for (const cc of cats) {
+        const catName = cc.category?.name
+        if (catName) {
+          if (!catMap.has(catName)) {
+            catMap.set(catName, [])
+          }
+          catMap.get(catName).push(contact)
+        }
+      }
       if (!silent) {
         results.push({ organization: contact.organization, path: filePath, success: true })
       }
@@ -205,6 +255,36 @@ export async function generateAllVcfFiles(contacts, silent = false) {
     }
   }
 
+  // 为每个分类子目录写入 VCF
+  for (const [catName, catContacts] of catMap) {
+    const catDir = path.join(VCF_OUTPUT_DIR, catName)
+    // 先删除该分类中属于本次联系人的旧文件
+    if (fs.existsSync(catDir)) {
+      const existing = fs.readdirSync(catDir)
+      const processedNames = new Set(catContacts.map(c => contactFileNames.get(c.id)))
+      for (const f of existing) {
+        if (processedNames.has(f)) {
+          fs.unlinkSync(path.join(catDir, f))
+        }
+      }
+    }
+    fs.mkdirSync(catDir, { recursive: true })
+    // 写入 VCF
+    for (const contact of catContacts) {
+      const fname = contactFileNames.get(contact.id)
+      if (fname && contact._vcfString) {
+        fs.writeFileSync(path.join(catDir, fname), contact._vcfString, 'utf-8')
+      }
+    }
+    // 更新 .Radicale.props（统计所有 VCF 文件数量）
+    const vcfCount = fs.readdirSync(catDir).filter(f => f.endsWith('.vcf')).length
+    const props = JSON.stringify({
+      'D:displayname': `${catName}(${vcfCount})`,
+      tag: 'VADDRESSBOOK'
+    })
+    fs.writeFileSync(path.join(catDir, '.Radicale.props'), props, 'utf-8')
+  }
+
   // 写入汇总文件（供下载用，放在 VCF_OUTPUT_DIR 父目录避免被 Radicale 解析）
   const summaryDir = path.dirname(VCF_OUTPUT_DIR)
   if (!fs.existsSync(summaryDir)) fs.mkdirSync(summaryDir, { recursive: true })
@@ -212,7 +292,7 @@ export async function generateAllVcfFiles(contacts, silent = false) {
     fs.writeFileSync(path.join(summaryDir, '汇总.vcf'), allVcfLines.join('\n'), 'utf-8')
   }
 
-  // 写入 Radicale 元数据
+  // 写入根目录 Radicale 元数据
   const propContent = JSON.stringify({
     'D:displayname': `全部(${contacts.length})`,
     tag: 'VADDRESSBOOK'

@@ -214,7 +214,7 @@ export default async function contactsRoutes(fastify) {
     if (contact.status === 'published') {
       try {
         contact._categoryPaths = await getCategoryPaths(contact)
-        const vcfString = generateVcfFromContact(contact)
+        const vcfString = await generateVcfFromContact(contact)
         const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
         const vcfPath = path.join(VCF_OUTPUT_DIR, `${sanitizedName}.vcf`)
         fs.mkdirSync(VCF_OUTPUT_DIR, { recursive: true })
