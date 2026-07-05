@@ -10,8 +10,17 @@ import { fileURLToPath } from 'node:url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const PUBLIC_DIR = path.resolve(__dirname, '../public')
-const WEB_PUBLIC_DIR = path.resolve(__dirname, '../public-web')
+// 自动适配本地开发（../public）和 Docker 部署（./public）两种目录结构
+function resolvePublicDir(dirName) {
+  const localPath = path.resolve(__dirname, dirName)
+  if (existsSync(localPath)) return localPath
+  const parentPath = path.resolve(__dirname, '..', dirName)
+  if (existsSync(parentPath)) return parentPath
+  return localPath
+}
+
+const PUBLIC_DIR = resolvePublicDir('public')
+const WEB_PUBLIC_DIR = resolvePublicDir('public-web')
 const PORT = process.env.PORT || 3000
 const CONSOLE_API_HOST = process.env.CONSOLE_API_HOST || 'localhost'
 const CONSOLE_API_PORT = process.env.CONSOLE_API_PORT || 3001

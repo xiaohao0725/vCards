@@ -1,6 +1,6 @@
 FROM node:alpine
 WORKDIR /app
-COPY src/templates/ ./public/
+COPY src/templates/ ./public-web/
 COPY src/serve.js ./serve.js
 EXPOSE 3000
 CMD ["node", "serve.js"]
