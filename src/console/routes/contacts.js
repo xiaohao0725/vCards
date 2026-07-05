@@ -216,9 +216,23 @@ export default async function contactsRoutes(fastify) {
         contact._categoryPaths = await getCategoryPaths(contact)
         const vcfString = await generateVcfFromContact(contact)
         const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
-        const vcfPath = path.join(VCF_OUTPUT_DIR, `${sanitizedName}.vcf`)
-        fs.mkdirSync(VCF_OUTPUT_DIR, { recursive: true })
-        fs.writeFileSync(vcfPath, vcfString, 'utf-8')
+        const fileName = `${sanitizedName}.vcf`
+
+        // 写入到所有关联的分类子目录
+        const cats = contact.categories || []
+        for (const cc of cats) {
+          const catName = cc.category?.name
+          if (catName) {
+            const catDir = path.join(VCF_OUTPUT_DIR, catName)
+            fs.mkdirSync(catDir, { recursive: true })
+            fs.writeFileSync(path.join(catDir, fileName), vcfString, 'utf-8')
+            const vcfCount = fs.readdirSync(catDir).filter(f => f.endsWith('.vcf')).length
+            fs.writeFileSync(path.join(catDir, '.Radicale.props'), JSON.stringify({
+              'D:displayname': `${catName}(${vcfCount})`,
+              tag: 'VADDRESSBOOK'
+            }), 'utf-8')
+          }
+        }
       } catch (err) {
         fastify.log.warn(`VCF 更新失败: ${contact.organization} - ${err.message}`)
       }
@@ -230,17 +244,36 @@ export default async function contactsRoutes(fastify) {
   // 删除
   fastify.delete('/contacts/:id', async (request, reply) => {
     const id = Number(request.params.id)
-    const existing = await prisma.contact.findUnique({ where: { id } })
+    const existing = await prisma.contact.findUnique({
+      where: { id },
+      include: { categories: { include: { category: true } } }
+    })
     if (!existing) return reply.code(404).send({ error: '联系人不存在' })
 
     await prisma.contact.delete({ where: { id } })
 
-    // 删除对应的 VCF 文件
+    // 删除分类子目录中的 VCF 文件
     try {
       const sanitizedName = existing.organization.replace(/[<>:"/\\|?*]/g, '_')
-      const vcfPath = path.join(VCF_OUTPUT_DIR, `${sanitizedName}.vcf`)
-      if (fs.existsSync(vcfPath)) {
-        fs.unlinkSync(vcfPath)
+      const fileName = `${sanitizedName}.vcf`
+      const cats = existing.categories || []
+      for (const cc of cats) {
+        const catName = cc.category?.name
+        if (catName) {
+          const catDir = path.join(VCF_OUTPUT_DIR, catName)
+          const vcfPath = path.join(catDir, fileName)
+          if (fs.existsSync(vcfPath)) {
+            fs.unlinkSync(vcfPath)
+          }
+          // 更新 .Radicale.props
+          if (fs.existsSync(catDir)) {
+            const vcfCount = fs.readdirSync(catDir).filter(f => f.endsWith('.vcf')).length
+            fs.writeFileSync(path.join(catDir, '.Radicale.props'), JSON.stringify({
+              'D:displayname': `${catName}(${vcfCount})`,
+              tag: 'VADDRESSBOOK'
+            }), 'utf-8')
+          }
+        }
       }
     } catch {
       // ignore

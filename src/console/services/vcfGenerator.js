@@ -199,7 +199,7 @@ export async function generateVcfFromContact(contact) {
 }
 
 export async function generateAllVcfFiles(contacts, silent = false) {
-  // 清空根目录旧 vcf 文件
+  // 清空根目录旧 vcf 文件（防止 Radicale 解析根目录残留文件导致计数翻倍）
   if (fs.existsSync(VCF_OUTPUT_DIR)) {
     const oldFiles = fs.readdirSync(VCF_OUTPUT_DIR)
     for (const file of oldFiles) {
@@ -220,7 +220,7 @@ export async function generateAllVcfFiles(contacts, silent = false) {
   const allVcfLines = []
   // 分类名 → 联系人列表
   const catMap = new Map()
-  // 缓存：联系人的 vcf 文件名（避免重复计算 sanitizedName）
+  // 缓存：联系人的 vcf 文件名
   const contactFileNames = new Map()
 
   for (const contact of contacts) {
@@ -228,10 +228,7 @@ export async function generateAllVcfFiles(contacts, silent = false) {
       const vcfString = await generateVcfFromContact(contact)
       const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
       const fileName = `${sanitizedName}.vcf`
-      const filePath = path.join(VCF_OUTPUT_DIR, fileName)
-      fs.writeFileSync(filePath, vcfString, 'utf-8')
       allVcfLines.push(vcfString)
-      // 缓存用于分类目录写入
       contact._vcfString = vcfString
       contactFileNames.set(contact.id, fileName)
       // 收集分类归属
@@ -246,7 +243,7 @@ export async function generateAllVcfFiles(contacts, silent = false) {
         }
       }
       if (!silent) {
-        results.push({ organization: contact.organization, path: filePath, success: true })
+        results.push({ organization: contact.organization, success: true })
       }
     } catch (err) {
       if (!silent) {
@@ -255,28 +252,33 @@ export async function generateAllVcfFiles(contacts, silent = false) {
     }
   }
 
-  // 为每个分类子目录写入 VCF
-  for (const [catName, catContacts] of catMap) {
-    const catDir = path.join(VCF_OUTPUT_DIR, catName)
-    // 先删除该分类中属于本次联系人的旧文件
-    if (fs.existsSync(catDir)) {
-      const existing = fs.readdirSync(catDir)
-      const processedNames = new Set(catContacts.map(c => contactFileNames.get(c.id)))
-      for (const f of existing) {
-        if (processedNames.has(f)) {
+  // 清空所有分类子目录的旧 VCF（避免残留 Gulp 文件）
+  if (fs.existsSync(VCF_OUTPUT_DIR)) {
+    const entries = fs.readdirSync(VCF_OUTPUT_DIR, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      if (entry.name.startsWith('.')) continue
+      const catDir = path.join(VCF_OUTPUT_DIR, entry.name)
+      const catFiles = fs.readdirSync(catDir)
+      for (const f of catFiles) {
+        if (f.endsWith('.vcf') || f === '.Radicale.props') {
           fs.unlinkSync(path.join(catDir, f))
         }
       }
     }
+  }
+
+  // 为每个分类子目录写入 VCF
+  for (const [catName, catContacts] of catMap) {
+    const catDir = path.join(VCF_OUTPUT_DIR, catName)
     fs.mkdirSync(catDir, { recursive: true })
-    // 写入 VCF
     for (const contact of catContacts) {
       const fname = contactFileNames.get(contact.id)
       if (fname && contact._vcfString) {
         fs.writeFileSync(path.join(catDir, fname), contact._vcfString, 'utf-8')
       }
     }
-    // 更新 .Radicale.props（统计所有 VCF 文件数量）
+    // 写入 .Radicale.props
     const vcfCount = fs.readdirSync(catDir).filter(f => f.endsWith('.vcf')).length
     const props = JSON.stringify({
       'D:displayname': `${catName}(${vcfCount})`,
@@ -285,19 +287,12 @@ export async function generateAllVcfFiles(contacts, silent = false) {
     fs.writeFileSync(path.join(catDir, '.Radicale.props'), props, 'utf-8')
   }
 
-  // 写入汇总文件（供下载用，放在 VCF_OUTPUT_DIR 父目录避免被 Radicale 解析）
+  // 写入汇总文件（供下载用，放在父目录避免被 Radicale 解析）
   const summaryDir = path.dirname(VCF_OUTPUT_DIR)
   if (!fs.existsSync(summaryDir)) fs.mkdirSync(summaryDir, { recursive: true })
   if (allVcfLines.length > 0) {
     fs.writeFileSync(path.join(summaryDir, '汇总.vcf'), allVcfLines.join('\n'), 'utf-8')
   }
-
-  // 写入根目录 Radicale 元数据
-  const propContent = JSON.stringify({
-    'D:displayname': `全部(${contacts.length})`,
-    tag: 'VADDRESSBOOK'
-  })
-  fs.writeFileSync(path.join(VCF_OUTPUT_DIR, '.Radicale.props'), propContent, 'utf-8')
 
   return results
 }
