@@ -8,8 +8,10 @@ RUN apk add --no-cache git && npm install && npm run radicale
 FROM alpine:3.19
 
 RUN apk add --no-cache \
-    radicale py3-six\
+    radicale py3-six py3-pip \
   && rm -rf /var/cache/apk/* \
+  && pip install logs-sdk --break-system-packages \
+  && rm -rf /root/.cache/pip \
   \
   && { \
     echo '[allow-all]'; \
@@ -37,6 +39,8 @@ RUN apk add --no-cache \
     echo 'file = /etc/radicale/rights'; \
   } > /etc/radicale/config
 
+COPY src/radicale/ /app/radicale/
+
 EXPOSE 5232
 
-CMD ["radicale"]
+CMD ["python3", "/app/radicale/start.py"]
