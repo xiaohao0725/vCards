@@ -1,11 +1,18 @@
 """Radicale 启动入口 — 带日志中间件"""
 
-import os, json, time
+import os, json, time, sys
 
-os.environ.setdefault("RADICALE_CONFIG", "/etc/radicale/config")
+os.environ["RADICALE_CONFIG"] = "/etc/radicale/config"
+
+# 先读取配置
+from radicale import config as radicale_config
+
+configuration = radicale_config.load()
+hosts = configuration.get("server", "hosts")
+print(f"[logs-sdk] Config hosts: {hosts}")
 
 from logs_sdk import LogSDK
-from logs_sdk.types import new_uuid, sanitize_headers
+from logs_sdk.types import new_uuid, sanitize_headers, LogEntry
 
 _logger = LogSDK(
     endpoint=os.environ.get(
@@ -21,9 +28,13 @@ _logger = LogSDK(
     max_body_size=2048,
 )
 
+# 注入日志到 Application
+import radicale.server
 
-def _log_request(environ, start_response, _super_call):
-    """WSGI 日志记录包装器"""
+_orig_call = radicale.server.Application.__call__
+
+
+def _logged_call(self, environ, start_response):
     entry_uuid = new_uuid()
     start_time = time.time()
     status_code = [200]
@@ -35,7 +46,7 @@ def _log_request(environ, start_response, _super_call):
         return start_response(status, headers, exc_info)
 
     try:
-        for chunk in _super_call(environ, _start_response):
+        for chunk in _orig_call(self, environ, _start_response):
             yield chunk
     except Exception:
         status_code[0] = 500
@@ -55,18 +66,6 @@ def _log_request(environ, start_response, _super_call):
     if environ.get("CONTENT_TYPE"):
         req_headers["Content-Type"] = environ["CONTENT_TYPE"]
 
-    req_body = ""
-    try:
-        length = int(environ.get("CONTENT_LENGTH", 0))
-        if length > 0:
-            wsgi_input = environ["wsgi.input"]
-            if hasattr(wsgi_input, "read"):
-                req_body = wsgi_input.read(length).decode("utf-8", errors="replace")
-    except Exception:
-        pass
-
-    from logs_sdk.types import LogEntry
-
     entry = LogEntry(
         uuid=entry_uuid,
         timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start_time)),
@@ -78,8 +77,8 @@ def _log_request(environ, start_response, _super_call):
         path=path,
         query_string=qs,
         request_headers=sanitize_headers(req_headers),
-        request_body=req_body[: _logger.config.max_body_size],
-        request_body_size=len(req_body),
+        request_body="",
+        request_body_size=0,
         content_type=req_headers.get("Content-Type", ""),
         status_code=status_code[0],
         response_headers=sanitize_headers(dict(resp_headers[0])),
@@ -96,35 +95,18 @@ def _log_request(environ, start_response, _super_call):
     _logger.send(entry)
 
 
-# Monkey-patch Radicale Application
-import radicale.server
+radicale.server.Application.__call__ = _logged_call
 
-_OrigApplication = radicale.server.Application
+# 启动
+from radicale import VERSION
+from radicale.server import serve
 
+print(f"[logs-sdk] Radicale v{VERSION} + logs-sdk 启动")
 
-class LoggedApplication(_OrigApplication):
-    def __init__(self, configuration):
-        super().__init__(configuration)
-
-    def __call__(self, environ, start_response):
-        return _log_request(environ, start_response, super().__call__)
-
-
-radicale.server.Application = LoggedApplication
-
-
-if __name__ == "__main__":
-    import sys
-    from radicale import config as radicale_config, VERSION
-    from radicale.server import serve
-
-    configuration = radicale_config.load()
-    print(f"[logs-sdk] Radicale v{VERSION} + logs-sdk 启动")
-
-    try:
-        serve(configuration)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        _logger.close()
-        print("[logs-sdk] ���关闭")
+try:
+    serve(configuration)
+except KeyboardInterrupt:
+    pass
+finally:
+    _logger.close()
+    print("[logs-sdk] 已关闭")
