@@ -4,10 +4,10 @@ import os
 
 os.environ.setdefault("RADICALE_CONFIG", "/etc/radicale/config")
 
-from radicale import application
+from radicale import application as radicale_app
 from logger_middleware import LogsMiddleware, logger as log_sdk
 
-app = LogsMiddleware(application())
+app = LogsMiddleware(radicale_app)
 
 if __name__ == "__main__":
     import sys
