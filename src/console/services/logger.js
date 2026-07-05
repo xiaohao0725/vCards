@@ -122,5 +122,5 @@ export async function logsPlugin(fastify) {
     await logger.close()
   })
 
-  console.log('[logs-sdk] ✅ Fastify 日志插件已挂载到根作用域')
+  console.log('[logs-sdk] 日志插件已挂载')
 }
