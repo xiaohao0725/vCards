@@ -93,6 +93,9 @@ export const api = {
   publishAll: () =>
     request('/contacts/publish-all', { method: 'POST' }),
 
+  batchUpdateCategory: (contactIds, categoryIds) =>
+    request('/contacts/batch-categorize', { method: 'POST', body: JSON.stringify({ contactIds, categoryIds }) }),
+
   uploadImage: (file) => {
     const formData = new FormData()
     formData.append('file', file)

@@ -249,6 +249,48 @@ export default async function contactsRoutes(fastify) {
     return { success: true }
   })
 
+  // 批量修改分类
+  fastify.post('/contacts/batch-categorize', async (request, reply) => {
+    const { contactIds, categoryIds } = request.body || {}
+
+    if (!contactIds?.length) {
+      return reply.code(400).send({ error: '请选择联系人' })
+    }
+
+    const ids = contactIds.map(Number).filter(Boolean)
+    if (!ids.length) {
+      return reply.code(400).send({ error: '联系人 ID 无效' })
+    }
+
+    const catIds = categoryIds?.length ? [...new Set(categoryIds.map(Number).filter(Boolean))] : []
+
+    if (catIds.length > 0) {
+      const existing = await prisma.category.findMany({
+        where: { id: { in: catIds } },
+        select: { id: true }
+      })
+      if (existing.length !== catIds.length) {
+        return reply.code(400).send({ error: '部分分类不存在' })
+      }
+    }
+
+    // 删除旧关联
+    await prisma.contactCategory.deleteMany({ where: { contactId: { in: ids } } })
+
+    // 创建新关联
+    if (catIds.length > 0) {
+      const data = ids.flatMap(cid => catIds.map(catId => ({ contactId: cid, categoryId: catId })))
+      await prisma.contactCategory.createMany({ data })
+    }
+
+    // 重新生成已发布联系人的 VCF
+    const publishedCount = await prisma.contact.count({
+      where: { id: { in: ids }, status: 'published' }
+    })
+
+    return { success: true, updated: ids.length, published: publishedCount }
+  })
+
   // 批量发布
   fastify.post('/contacts/publish-all', async (request, reply) => {
     const result = await prisma.contact.updateMany({

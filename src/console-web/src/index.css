@@ -54,6 +54,15 @@ body {
 select { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; background: white; }
 .stats-bar { color: #888; font-size: 14px; margin-bottom: 12px; }
 
+/* ===== 批量操作栏 ===== */
+.batch-bar {
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 14px; margin-bottom: 12px;
+  background: #fff3e0; border: 1px solid #ffcc80; border-radius: 6px;
+}
+.batch-hint { font-size: 13px; color: #e65100; font-weight: 500; margin-right: 4px; }
+.row-selected { background: #fff8e1; }
+
 /* ===== 按钮 ===== */
 .btn-primary {
   padding: 8px 16px; background: #667eea; color: white; border: none;

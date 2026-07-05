@@ -14,6 +14,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [publishing, setPublishing] = useState(false)
   const [categoryPaths, setCategoryPaths] = useState({})
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [batchCategoryId, setBatchCategoryId] = useState('')
+  const [batchSubmitting, setBatchSubmitting] = useState(false)
   const navigate = useNavigate()
 
   const loadContacts = useCallback(async () => {
@@ -99,6 +102,51 @@ export default function Dashboard() {
     }
   }
 
+  const handleSelectAll = () => {
+    const newSet = new Set()
+    for (const c of contacts) {
+      newSet.add(c.id)
+    }
+    setSelectedIds(newSet)
+  }
+
+  const handleDeselectAll = () => {
+    setSelectedIds(new Set())
+  }
+
+  const handleToggleSelect = (id) => {
+    const newSet = new Set(selectedIds)
+    if (newSet.has(id)) {
+      newSet.delete(id)
+    } else {
+      newSet.add(id)
+    }
+    setSelectedIds(newSet)
+  }
+
+  const handleBatchCategorize = async () => {
+    if (!batchCategoryId) {
+      alert('请选择目标分类')
+      return
+    }
+    if (!window.confirm(`确定将 ${selectedIds.size} 个联系人的分类修改为目标分类吗？此操作将替换原有分类。`)) return
+    setBatchSubmitting(true)
+    try {
+      const result = await api.batchUpdateCategory(
+        [...selectedIds],
+        batchCategoryId ? [Number(batchCategoryId)] : []
+      )
+      alert(`已更新 ${result.updated} 个联系人`)
+      setSelectedIds(new Set())
+      setBatchCategoryId('')
+      loadContacts()
+    } catch (err) {
+      alert(`批量修改失败: ${err.message}`)
+    } finally {
+      setBatchSubmitting(false)
+    }
+  }
+
   const totalPages = Math.ceil(total / 20)
 
   return (
@@ -149,7 +197,33 @@ export default function Dashboard() {
 
       <div className="stats-bar">
         共 {total} 个联系人
+        {selectedIds.size > 0 && `，已选 ${selectedIds.size} 个`}
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="batch-bar">
+          <span className="batch-hint">已选 {selectedIds.size} 个联系人</span>
+          <select
+            value={batchCategoryId}
+            onChange={(e) => setBatchCategoryId(e.target.value)}
+            style={{ minWidth: 140 }}
+          >
+            <option value="">选择目标分类</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleBatchCategorize}
+            disabled={batchSubmitting || !batchCategoryId}
+            className="btn-primary"
+            style={{ background: '#e65100' }}
+          >
+            {batchSubmitting ? '...' : '批量修改分类'}
+          </button>
+          <button onClick={handleDeselectAll} className="btn-secondary">取消选择</button>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading">加载中...</div>
@@ -158,6 +232,13 @@ export default function Dashboard() {
           <table className="contact-table">
             <thead>
               <tr>
+                <th style={{ width: 40 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size > 0 && selectedIds.size === contacts.length}
+                    onChange={() => selectedIds.size === contacts.length ? handleDeselectAll() : handleSelectAll()}
+                  />
+                </th>
                 <th>组织名称</th>
                 <th>分类</th>
                 <th>电话</th>
@@ -168,7 +249,14 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {contacts.map((c) => (
-                <tr key={c.id}>
+                <tr key={c.id} className={selectedIds.has(c.id) ? 'row-selected' : ''}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(c.id)}
+                      onChange={() => handleToggleSelect(c.id)}
+                    />
+                  </td>
                   <td>
                     <div className="contact-name">
                       {c.imagePath && (
@@ -200,7 +288,7 @@ export default function Dashboard() {
                 </tr>
               ))}
               {contacts.length === 0 && (
-                <tr><td colSpan={6} className="empty-row">暂无联系人</td></tr>
+                <tr><td colSpan={7} className="empty-row">暂无联系人</td></tr>
               )}
             </tbody>
           </table>
