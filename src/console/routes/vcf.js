@@ -2,10 +2,37 @@ import fs from 'node:fs'
 import path from 'node:path'
 import prisma from '../services/prisma.js'
 import { authMiddleware } from '../middleware/authMiddleware.js'
-import { generateVcfFromContact, generateAllVcfFiles } from '../services/vcfGenerator.js'
+import { generateVcfFromContact, generateAllVcfFiles, getCategoryPaths } from '../services/vcfGenerator.js'
 import { uploadImage } from '../services/qiniu.js'
 
 const VCF_OUTPUT_DIR = process.env.VCF_OUTPUT_DIR || '/app/vcards-data'
+
+function parseCategoryPaths(note, categoriesValue) {
+  const paths = []
+
+  // 从 NOTE 解析路径
+  if (note) {
+    const noteMatch = note.match(/(?:分类路径|覆盖地区):\s*(.+)/i)
+    if (noteMatch) {
+      const parts = noteMatch[1].split(',').map(s => s.trim()).filter(Boolean)
+      for (const p of parts) {
+        paths.push(p.replace(/\s*»\s*/g, '»').trim())
+      }
+    }
+  }
+
+  // 从 CATEGORIES 解析路径（兜底）
+  if (!paths.length && categoriesValue) {
+    const parts = categoriesValue.split(',').map(s => s.trim()).filter(Boolean)
+    for (const p of parts) {
+      if (p.includes('»')) {
+        paths.push(p)
+      }
+    }
+  }
+
+  return paths
+}
 
 function parseVcfContent(content) {
   const contacts = []
@@ -21,7 +48,6 @@ function parseVcfContent(content) {
     const photoMatch = block.match(/PHOTO(?:;[^:]*)?:(.+)/i)
     if (photoMatch) {
       const val = photoMatch[1].trim()
-      // 提取编码和类型
       const encMatch = block.match(/PHOTO;ENCODING=([^;:]+)/i)
       const typeMatch = block.match(/PHOTO(?:;.*)?;TYPE=(\w+)/i) || block.match(/PHOTO;([^;:]+);TYPE=(\w+)/i)
       const mimeType = typeMatch?.[2] || typeMatch?.[1] || 'PNG'
@@ -30,7 +56,6 @@ function parseVcfContent(content) {
       if (val.startsWith('http')) {
         photo = { url: val, mimeType: mimeType.toLowerCase() }
       } else {
-        // 可能是多行 base64（去除换行符和空格）
         const data = val.replace(/\s/g, '')
         if (data.length > 20) {
           photo = { data: `data:image/${mimeType.toLowerCase()};base64,${data}`, mimeType: mimeType.toLowerCase() }
@@ -40,7 +65,6 @@ function parseVcfContent(content) {
 
     // 电话 — 带标签解析
     const phones = []
-    // TEL;TYPE=work,voice:123456
     const telRegex = /TEL;TYPE=([^:]*):(.+)/gi
     let telMatch
     while ((telMatch = telRegex.exec(block)) !== null) {
@@ -107,7 +131,7 @@ function parseVcfContent(content) {
       }
     }
 
-    // 分类
+    // 分类 — CATEGORIES 字段
     const categories = []
     const catMatch = block.match(/CATEGORIES:(.+)/i)
     if (catMatch) {
@@ -116,20 +140,23 @@ function parseVcfContent(content) {
         if (name) categories.push(name)
       })
     }
-    const xCatMatch = block.match(/X-CATEGORY:(.+)/i)
-    if (xCatMatch) {
-      const name = xCatMatch[1].trim()
-      if (name && !categories.includes(name)) categories.push(name)
-    }
+
+    // NOTE 字段
+    const note = (block.match(/(?:^|\n)NOTE:(.+)/im)?.[1] || '').trim() || null
 
     // URL
     const url = (block.match(/(?:^|\n)URL(?:;[^:]*)?:(.+)/im)?.[1] || '').trim() || null
+
+    // 解析层级分类路径
+    const categoryPaths = parseCategoryPaths(note, catMatch?.[1])
 
     contacts.push({
       organization,
       url,
       photo,
+      note,
       categories: [...new Set(categories)],
+      categoryPaths,
       phones,
       emails
     })
@@ -141,6 +168,30 @@ function parseVcfContent(content) {
 function base64ToBuffer(dataUri) {
   const base64 = dataUri.split(',')[1]
   return Buffer.from(base64, 'base64')
+}
+
+// 根据路径创建或查找分类树
+async function findOrCreateCategoryPath(pathString) {
+  const parts = pathString.split('»').map(s => s.trim()).filter(Boolean)
+  if (!parts.length) return null
+
+  let parentId = null
+  let categoryId = null
+
+  for (const name of parts) {
+    let cat = await prisma.category.findUnique({ where: { name } })
+
+    if (!cat) {
+      cat = await prisma.category.create({
+        data: { name, parentId, sortOrder: 999 }
+      })
+    }
+
+    parentId = cat.id
+    categoryId = cat.id
+  }
+
+  return categoryId
 }
 
 export default async function vcfRoutes(fastify) {
@@ -190,6 +241,22 @@ export default async function vcfRoutes(fastify) {
       }
     }
 
+    // 处理层级路径：为 categoryPaths 中的路径创建分类树
+    for (const c of importedContacts) {
+      if (c.categoryPaths?.length) {
+        for (const pathStr of c.categoryPaths) {
+          const leafId = await findOrCreateCategoryPath(pathStr)
+          if (leafId) {
+            c._resolvedCategoryId = c._resolvedCategoryId || leafId
+            c._resolvedCategoryIds = c._resolvedCategoryIds || []
+            if (!c._resolvedCategoryIds.includes(leafId)) {
+              c._resolvedCategoryIds.push(leafId)
+            }
+          }
+        }
+      }
+    }
+
     // 为那些前端指定了 _categoryName 但不在 newCategories 中的分类也自动创建
     for (const c of importedContacts) {
       if (c._categoryName && !createdCats[c._categoryName]) {
@@ -225,25 +292,40 @@ export default async function vcfRoutes(fastify) {
         }
       }
 
-      // 确定分类：优先使用前端传入的 _categoryId / _categoryName
-      let resolvedCategoryId = null
+      // 确定分类关联 ID 列表
+      const categoryIds = []
+
+      // 优先使用层级路径解析的分类
+      if (c._resolvedCategoryIds?.length) {
+        categoryIds.push(...c._resolvedCategoryIds)
+      }
+
+      // 前端传入的分类
       if (c._categoryId) {
-        resolvedCategoryId = Number(c._categoryId)
-      } else if (c._categoryName) {
-        resolvedCategoryId = catNameToId[c._categoryName] || createdCats[c._categoryName] || null
-      } else if (c.categories?.length) {
+        const id = Number(c._categoryId)
+        if (!categoryIds.includes(id)) categoryIds.push(id)
+      }
+      if (c._categoryName) {
+        const id = catNameToId[c._categoryName] || createdCats[c._categoryName]
+        if (id && !categoryIds.includes(id)) categoryIds.push(id)
+      }
+
+      // 从 CATEGORIES 字段匹配
+      if (!categoryIds.length && c.categories?.length) {
         for (const catName of c.categories) {
           const id = catNameToId[catName] || createdCats[catName]
-          if (id) { resolvedCategoryId = id; break }
+          if (id && !categoryIds.includes(id)) categoryIds.push(id)
         }
       }
 
       const contact = await prisma.contact.create({
         data: {
           organization: c.organization,
-          categoryId: resolvedCategoryId,
           url: c.url || null,
           imagePath,
+          categories: categoryIds.length > 0 ? {
+            create: categoryIds.map(cid => ({ categoryId: cid }))
+          } : undefined,
           phones: c.phones?.length ? {
             create: c.phones.filter(p => p.number).map((p, i) => ({
               number: String(p.number),
@@ -265,7 +347,7 @@ export default async function vcfRoutes(fastify) {
         id: contact.id,
         organization: contact.organization,
         imagePath: contact.imagePath,
-        categoryId: contact.categoryId
+        categoryIds
       })
     }
 
@@ -280,7 +362,7 @@ export default async function vcfRoutes(fastify) {
     const publishedContacts = await prisma.contact.findMany({
       where: { status: 'published' },
       include: {
-        category: true,
+        categories: { include: { category: true } },
         phones: { orderBy: { sortOrder: 'asc' } },
         emails: { orderBy: { sortOrder: 'asc' } }
       }
@@ -290,7 +372,7 @@ export default async function vcfRoutes(fastify) {
       return reply.code(400).send({ error: '没有已发布的联系人' })
     }
 
-    const results = generateAllVcfFiles(publishedContacts)
+    const results = await generateAllVcfFiles(publishedContacts)
     const successes = results.filter(r => r.success)
     const failures = results.filter(r => !r.success)
 
@@ -308,7 +390,7 @@ export default async function vcfRoutes(fastify) {
     const contact = await prisma.contact.findUnique({
       where: { id: Number(request.params.id) },
       include: {
-        category: true,
+        categories: { include: { category: true } },
         phones: { orderBy: { sortOrder: 'asc' } },
         emails: { orderBy: { sortOrder: 'asc' } }
       }
@@ -316,6 +398,7 @@ export default async function vcfRoutes(fastify) {
 
     if (!contact) return reply.code(404).send({ error: '联系人不存在' })
 
+    contact._categoryPaths = await getCategoryPaths(contact)
     const vcfString = generateVcfFromContact(contact)
     const sanitizedName = contact.organization.replace(/[<>:"/\\|?*]/g, '_')
 
@@ -328,7 +411,7 @@ export default async function vcfRoutes(fastify) {
     const publishedContacts = await prisma.contact.findMany({
       where: { status: 'published' },
       include: {
-        category: true,
+        categories: { include: { category: true } },
         phones: { orderBy: { sortOrder: 'asc' } },
         emails: { orderBy: { sortOrder: 'asc' } }
       }
@@ -336,6 +419,11 @@ export default async function vcfRoutes(fastify) {
 
     if (!publishedContacts.length) {
       return reply.code(400).send({ error: '没有已发布的联系人' })
+    }
+
+    // 预计算分类路径
+    for (const c of publishedContacts) {
+      c._categoryPaths = await getCategoryPaths(c)
     }
 
     const allVcf = publishedContacts

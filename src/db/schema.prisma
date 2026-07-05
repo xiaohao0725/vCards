@@ -8,11 +8,14 @@ datasource db {
 }
 
 model Category {
-  id        Int       @id @default(autoincrement())
-  name      String    @unique @db.VarChar(50)
-  sortOrder Int       @default(0) @map("sort_order")
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  contacts  Contact[]
+  id        Int               @id @default(autoincrement())
+  name      String            @unique @db.VarChar(50)
+  parentId  Int?              @map("parent_id")
+  parent    Category?         @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[]        @relation("CategoryTree")
+  sortOrder Int               @default(0) @map("sort_order")
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  contacts  ContactCategory[]
 
   @@map("categories")
 }
@@ -27,22 +30,31 @@ model User {
 }
 
 model Contact {
-  id           Int            @id @default(autoincrement())
-  organization String         @db.VarChar(200)
-  categoryId   Int?           @map("category_id")
-  category     Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  url          String?        @db.VarChar(500)
-  imagePath    String?        @map("image_path") @db.VarChar(500)
-  status       String         @default("draft") @db.VarChar(20)
-  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  id           Int               @id @default(autoincrement())
+  organization String            @db.VarChar(200)
+  url          String?           @db.VarChar(500)
+  imagePath    String?           @map("image_path") @db.VarChar(500)
+  status       String            @default("draft") @db.VarChar(20)
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz()
+  categories   ContactCategory[]
   phones       ContactPhone[]
   emails       ContactEmail[]
 
   @@index([status])
-  @@index([categoryId])
   @@index([organization])
   @@map("contacts")
+}
+
+model ContactCategory {
+  contactId  Int
+  categoryId Int
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, categoryId])
+  @@index([categoryId])
+  @@map("contact_categories")
 }
 
 model ContactPhone {

@@ -150,7 +150,7 @@ export default function Dashboard() {
                       <span>{c.organization}</span>
                     </div>
                   </td>
-                  <td>{c.category?.name || '-'}</td>
+                  <td>{c.categories?.map(cc => cc.category?.name).filter(Boolean).join(', ') || '-'}</td>
                   <td>{c.phones?.slice(0, 2).map(p => p.number).join(', ') || '-'}</td>
                   <td>
                     <span className={`status-badge status-${c.status}`}>
