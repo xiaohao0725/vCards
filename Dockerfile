@@ -41,8 +41,6 @@ RUN apk add --no-cache \
 
 COPY src/radicale/ /app/radicale/
 
-ENV PYTHONSTARTUP=/app/radicale/logger_inject.py
-
 EXPOSE 5232
 
-CMD ["radicale"]
+CMD ["python3", "/app/radicale/start.py"]
