@@ -23,10 +23,18 @@ _logger = LogSDK(
     max_body_size=2048,
 )
 
-# 加载配置（在 patch 之前）
-from radicale.config import load
+# 加载配置（与 Radicale CLI 保持一致的方式）
+from radicale.config import load, parse_compound_paths, DEFAULT_CONFIG_PATH
 
-configuration = load()
+configuration = load(
+    parse_compound_paths(DEFAULT_CONFIG_PATH, os.environ.get("RADICALE_CONFIG"), None)
+)
+import sys
+
+print(
+    f"[logs-sdk] Loaded config, hosts={configuration.get('server', 'hosts')}",
+    flush=True,
+)
 
 # Monkey-patch Radicale 的 Application
 from radicale import Application
