@@ -31,22 +31,59 @@ function truncate(s, maxLen) {
   return s.slice(0, maxLen) + '...[truncated]'
 }
 
+function detectClientType(request) {
+  const ct = request.headers['x-client-type']
+  if (ct) return ct
+  const ua = (request.headers['user-agent'] || '').toLowerCase()
+  if (ua.includes('micromessenger') || ua.includes('miniprogram')) return 'miniprogram'
+  if (request.headers['x-caller-service']) return 'server'
+  const referer = request.headers.referer
+  const origin = request.headers.origin
+  if ((referer || origin) && (ua.includes('mozilla') || ua.includes('chrome') || ua.includes('safari') || ua.includes('firefox'))) {
+    return 'web'
+  }
+  return 'other'
+}
+
+function detectOrigin(request) {
+  switch (detectClientType(request)) {
+    case 'web': return request.headers.referer || request.headers.origin || ''
+    case 'miniprogram': return `miniprogram:${request.headers['x-miniprogram-appid'] || ''}${request.headers['x-miniprogram-path'] || ''}`
+    case 'app': return `app:${request.headers['x-app-name'] || ''}/${request.headers['x-app-version'] || ''}/${request.headers['x-app-scene'] || ''}`
+    case 'server': return `server:${request.headers['x-caller-service'] || ''}/${request.headers['x-caller-version'] || ''}`
+    default: return 'unknown'
+  }
+}
+
+function extractAPIVersion(path) {
+  if (!path) return ''
+  const m = path.match(/\/api\/(v\d+)\//)
+  return m ? m[1] : ''
+}
+
 function buildEntry(request, reply, uuid, startTime, durationMs, reqBody, respBody) {
   const config = logger.configResolved
   const scheme = request.protocol
   const fullURL = `${scheme}://${request.hostname}${request.url}`
+  const clientType = detectClientType(request)
 
   return {
     uuid,
+    uid: 0,
     timestamp: new Date(startTime).toISOString(),
     duration_ms: Math.round(durationMs),
+    project_slug: config.projectSlug,
+    environment: config.environment,
+    service_name: config.serviceName || '',
+    host: logger.host,
+    process_id: String(process.pid),
     method: request.method,
     scheme,
     full_url: fullURL,
     host_header: request.hostname || '',
     path: request.routeOptions?.url || request.url.split('?')[0],
     query_string: JSON.stringify(request.query),
-    origin: '',
+    origin: detectOrigin(request),
     request_headers: sanitizeHeaders(request.headers),
     request_body: truncate(reqBody, config.maxBodySize),
     request_body_size: Buffer.byteLength(reqBody),
@@ -57,29 +94,108 @@ function buildEntry(request, reply, uuid, startTime, durationMs, reqBody, respBo
     response_body_size: Buffer.byteLength(respBody),
     client_ip: request.ip,
     client_ip_chain: request.headers['x-forwarded-for'] || '',
-    client_type: 'web',
+    client_type: clientType,
     client_port: 0,
+    client_country: '',
+    client_province: '',
+    client_city: '',
+    client_isp: '',
     user_agent: request.headers['user-agent'] || '',
+    device_type: '',
+    browser: '',
+    browser_version: '',
+    os_name: '',
+    os_version: '',
+    tls_version: request.raw?.socket?.getProtocol?.() || '',
+    tls_cipher: request.raw?.socket?.getCipher?.()?.name || '',
+    proto: request.raw?.httpVersion || '1.1',
+    api_version: extractAPIVersion(request.routeOptions?.url || request.url),
+    referer: request.headers.referer || '',
+    upstream_status: 0,
+    latency_breakdown: '{}',
+    request_id: uuid.slice(0, 8),
+    trace_id: request.headers['x-trace-id'] || uuid,
+    span_id: uuid,
+    parent_span_id: request.headers['x-parent-span-id'] || '',
+    user_id: request.headers['x-user-id'] || '',
+    session_id: request.headers['x-session-id'] || '',
     is_error: reply.statusCode >= 500,
     error_message: reply.statusCode >= 500 ? `HTTP ${reply.statusCode}` : '',
     error_type: reply.statusCode >= 500 ? 'http_error' : '',
     error_stack: '',
-    trace_id: request.headers['x-trace-id'] || uuid,
-    span_id: uuid,
-    parent_span_id: request.headers['x-parent-span-id'] || '',
-    user_id: '',
-    session_id: '',
+    panic_location: '',
+    tags: {},
+  }
+}
+
+function panicEntry(request, reply, uuid, startTime, error) {
+  const config = logger.configResolved
+  const scheme = request.protocol
+  const fullURL = `${scheme}://${request.hostname}${request.url}`
+  const clientType = detectClientType(request)
+
+  return {
+    uuid,
+    uid: 0,
+    timestamp: new Date(startTime).toISOString(),
+    duration_ms: 0,
     project_slug: config.projectSlug,
     environment: config.environment,
     service_name: config.serviceName || '',
     host: logger.host,
     process_id: String(process.pid),
+    method: request.method,
+    scheme,
+    full_url: fullURL,
+    host_header: request.hostname || '',
+    path: request.routeOptions?.url || request.url.split('?')[0],
+    query_string: JSON.stringify(request.query),
+    origin: detectOrigin(request),
+    request_headers: sanitizeHeaders(request.headers),
+    request_body: '',
+    request_body_size: 0,
+    content_type: request.headers['content-type'] || '',
+    status_code: 0,
+    response_headers: '{}',
+    response_body: '',
+    response_body_size: 0,
+    client_ip: request.ip,
+    client_ip_chain: request.headers['x-forwarded-for'] || '',
+    client_type: clientType,
+    client_port: 0,
+    client_country: '',
+    client_province: '',
+    client_city: '',
+    client_isp: '',
+    user_agent: request.headers['user-agent'] || '',
+    device_type: '',
+    browser: '',
+    browser_version: '',
+    os_name: '',
+    os_version: '',
+    tls_version: request.raw?.socket?.getProtocol?.() || '',
+    tls_cipher: request.raw?.socket?.getCipher?.()?.name || '',
+    proto: request.raw?.httpVersion || '1.1',
+    api_version: extractAPIVersion(request.routeOptions?.url || request.url),
+    referer: request.headers.referer || '',
+    upstream_status: 0,
+    latency_breakdown: '{}',
+    request_id: uuid.slice(0, 8),
+    trace_id: request.headers['x-trace-id'] || uuid,
+    span_id: uuid,
+    parent_span_id: request.headers['x-parent-span-id'] || '',
+    user_id: request.headers['x-user-id'] || '',
+    session_id: request.headers['x-session-id'] || '',
+    is_error: true,
+    error_message: error?.message || String(error),
+    error_type: 'panic',
+    error_stack: error?.stack || '',
+    panic_location: '',
     tags: {},
   }
 }
 
 export async function logsPlugin(fastify) {
-  // 直接在父作用域注册 hook（不通过 fastify.register 创建子作用域）
   fastify.decorateRequest('_logsStartTime', 0)
   fastify.decorateRequest('_logsStartHrTime', 0)
   fastify.decorateRequest('_logsUUID', '')
@@ -116,6 +232,14 @@ export async function logsPlugin(fastify) {
     const entry = buildEntry(request, reply, entryUUID, startTime, durationMs, reqBody, respBody)
     logger.send(entry)
     return payload
+  })
+
+  fastify.addHook('onError', async (request, reply, error) => {
+    const startTime = request._logsStartTime
+    const entryUUID = request._logsUUID
+    if (!startTime || !entryUUID) return
+    const entry = panicEntry(request, reply, entryUUID, startTime, error)
+    logger.send(entry)
   })
 
   fastify.addHook('onClose', async () => {
